@@ -1,0 +1,188 @@
+%% 核心数据模型类图
+%% AI驱动的家庭记账与财务规划Web应用
+%% 架构师：高见远（Gao） 2026-07-04
+
+classDiagram
+    class User {
+        +string id
+        +string phone
+        +string email
+        +string passwordHash
+        +string wechatOpenId
+        +string nickname
+        +string avatar
+        +Date createdAt
+        +Date updatedAt
+    }
+
+    class Family {
+        +string id
+        +string name
+        +string ownerId
+        +string avatar
+        +string inviteCode
+        +Date inviteCodeExpiry
+        +Date createdAt
+        +Date updatedAt
+    }
+
+    class FamilyMember {
+        +string id
+        +string familyId
+        +string userId
+        +MemberRole role
+        +Date joinedAt
+    }
+
+    class Ledger {
+        +string id
+        +string familyId
+        +string ownerId
+        +LedgerType type
+        +string name
+        +Date createdAt
+    }
+
+    class Category {
+        +string id
+        +string familyId
+        +string parentId
+        +string name
+        +string icon
+        +string color
+        +int sortOrder
+        +boolean isSystem
+        +Date createdAt
+    }
+
+    class Transaction {
+        +string id
+        +string ledgerId
+        +string userId
+        +string categoryId
+        +TransactionType type
+        +decimal amount
+        +Date date
+        +string merchant
+        +string note
+        +TransactionSource source
+        +string importRecordId
+        +float aiConfidence
+        +boolean aiCorrected
+        +boolean isLargeExpense
+        +Date createdAt
+        +Date updatedAt
+    }
+
+    class Budget {
+        +string id
+        +string familyId
+        +string categoryId
+        +decimal amount
+        +string period
+        +int year
+        +int month
+        +string wishGoalId
+        +Date createdAt
+        +Date updatedAt
+    }
+
+    class WishGoal {
+        +string id
+        +string familyId
+        +string name
+        +decimal targetAmount
+        +decimal currentAmount
+        +Date targetDate
+        +string icon
+        +string color
+        +boolean isCompleted
+        +Date createdAt
+        +Date updatedAt
+    }
+
+    class ImportRecord {
+        +string id
+        +string userId
+        +string familyId
+        +string ledgerId
+        +ImportPlatform platform
+        +string fileName
+        +string fileUrl
+        +int totalCount
+        +int successCount
+        +int failedCount
+        +ImportStatus status
+        +float aiAccuracy
+        +string errorMessage
+        +Date createdAt
+        +Date confirmedAt
+    }
+
+    class MonthlyReport {
+        +string id
+        +string familyId
+        +int year
+        +int month
+        +decimal totalIncome
+        +decimal totalExpense
+        +decimal balance
+        +decimal previousMonthBalance
+        +json categoryBreakdown
+        +json anomalies
+        +json advice
+        +json benchmarkComparison
+        +Date generatedAt
+        +string[] readBy
+    }
+
+    class Notification {
+        +string id
+        +string userId
+        +NotificationType type
+        +string title
+        +string content
+        +json data
+        +boolean isRead
+        +Date createdAt
+    }
+
+    class ClassificationFeedback {
+        +string id
+        +string transactionId
+        +string userId
+        +string originalCategoryId
+        +string correctedCategoryId
+        +string merchant
+        +decimal amount
+        +Date createdAt
+    }
+
+    %% 关系定义
+    User ||--o{ FamilyMember : "joins as"
+    Family ||--o{ FamilyMember : "has members"
+    Family ||--|| User : "owned by"
+    Family ||--o{ Ledger : "owns ledgers"
+    Family ||--o{ Category : "defines categories"
+    Family ||--o{ Budget : "sets budgets"
+    Family ||--o{ WishGoal : "has goals"
+    Family ||--o{ MonthlyReport : "generates"
+    Ledger ||--o{ Transaction : "contains"
+    User ||--o{ Transaction : "creates"
+    Category ||--o{ Transaction : "classifies"
+    Category ||--o{ Category : "parent of"
+    Budget }o--o| WishGoal : "linked to"
+    Budget }o--o| Category : "targets"
+    User ||--o{ ImportRecord : "uploads"
+    ImportRecord ||--o{ Transaction : "produces"
+    User ||--o{ Notification : "receives"
+    Transaction ||--o{ ClassificationFeedback : "generates feedback"
+
+    %% 枚举说明
+    %% MemberRole: OWNER | ADMIN | MEMBER | VIEWER
+    %% LedgerType: SHARED | PERSONAL
+    %% TransactionType: INCOME | EXPENSE | TRANSFER
+    %% TransactionSource: MANUAL | QUICK_RECORD | IMPORT | VOICE
+    %% ImportPlatform: ALIPAY | WECHAT | CMB | ICBC | CCB
+    %% ImportStatus: PENDING | PARSING | PREVIEW | CONFIRMED | FAILED
+    %% NotificationType: BUDGET_WARNING | BUDGET_EXCEEDED | BUDGET_SUCCESS | LARGE_EXPENSE | MONTHLY_REPORT | FAMILY_MEMBER_JOIN | IMPORT_COMPLETE

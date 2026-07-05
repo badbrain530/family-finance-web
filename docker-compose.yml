@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # ==================== PostgreSQL 16 ====================
+  postgres:
+    image: postgres:16-alpine
+    container_name: family_finance_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: family_finance
+      POSTGRES_USER: family_finance
+      POSTGRES_PASSWORD: family_finance_pwd
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/pg-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U family_finance -d family_finance"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - family_finance_net
+
+  # ==================== Redis 7 ====================
+  redis:
+    image: redis:7-alpine
+    container_name: family_finance_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - family_finance_net
+
+  # ==================== 后端 NestJS ====================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: family_finance_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://family_finance:family_finance_pwd@postgres:5432/family_finance?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PORT: 3001
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - family_finance_net
+
+  # ==================== 前端 Vite ====================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: family_finance_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - family_finance_net
+
+volumes:
+  pg_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  family_finance_net:
+    driver: bridge

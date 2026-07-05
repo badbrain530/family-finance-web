@@ -1,0 +1,179 @@
+%% 核心流程时序图
+%% AI驱动的家庭记账与财务规划Web应用
+%% 架构师：高见远（Gao） 2026-07-04
+
+%% ============================================
+%% 流程1：账单导入 + AI分类流程
+%% ============================================
+
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant FE as 前端
+    participant BE as 后端API
+    participant FS as 文件存储(OSS)
+    participant PF as 解析工厂
+    participant P as 平台解析器
+    participant AI as AI分类服务
+    participant DB as 数据库
+    participant WS as WebSocket
+
+    U->>FE: 拖拽文件到上传区
+    FE->>FE: 文件类型/大小校验
+    FE->>BE: POST /api/imports/upload (multipart)
+    BE->>BE: 生成ImportRecord(status=pending)
+    BE->>DB: 保存ImportRecord
+    BE->>FS: 上传文件到OSS
+    BE->>DB: 更新ImportRecord(status=parsing)
+    BE->>PF: getParser(platform)
+    PF->>PF: 根据platform选择对应Parser
+    PF-->>BE: 返回Parser实例
+    BE->>P: parse(fileUrl)
+    P->>FS: 下载文件
+    P->>P: 规则匹配文件格式
+    P->>P: 逐行提取交易数据
+    P->>P: 字段映射(日期/金额/商户/分类)
+    P-->>BE: ParsedTransaction[]
+    BE->>AI: classifyBatch(transactions)
+    AI->>AI: 1.规则引擎匹配商户关键词
+    AI->>AI: 2.未命中→调用通义千问API
+    AI->>AI: 3.计算分类置信度
+    AI-->>BE: ClassifiedTransaction[]
+    BE->>DB: 更新ImportRecord(status=preview)
+    BE-->>FE: 返回预览数据(含AI分类+置信度)
+    FE-->>U: 展示预览表格
+
+    Note over FE,U: 表格支持：排序/筛选/批量勾选/批量改分类<br/>低置信度高亮标记
+
+    U->>FE: 检查并纠正分类
+    U->>FE: 点击"确认导入"
+    FE->>BE: POST /api/imports/:id/confirm
+    Note right of BE: 请求体含用户纠正的分类映射
+    BE->>DB: 批量写入Transaction
+    BE->>AI: 保存纠正反馈(ClassificationFeedback)
+    BE->>DB: 更新ImportRecord(status=confirmed)
+    BE->>WS: 广播 transaction:created 事件
+    WS-->>FE: 推送至其他在线成员
+    BE-->>FE: 返回导入摘要
+    FE-->>U: 显示Toast"成功导入X条，分类准确率Y%"
+
+
+%% ============================================
+%% 流程2：Ctrl+K 快捷键记账流程
+%% ============================================
+
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant FE as 前端
+    participant HK as 快捷键Hook
+    participant BE as 后端API
+    participant NLP as NLP解析服务
+    participant CLS as AI分类服务
+    participant DB as 数据库
+    participant WS as WebSocket
+
+    U->>FE: 按下 Ctrl+K（任意页面）
+    FE->>HK: 触发快捷键事件
+    HK->>FE: 打开QuickRecordModal
+    FE-->>U: 显示记账浮层（输入框自动聚焦）
+    U->>FE: 输入"午饭28块" + 按Enter
+    FE->>FE: 前端基础校验（非空）
+    FE->>BE: POST /api/transactions/quick-record
+    Note right of BE: 请求体: {input: "午饭28块", ledgerId}
+    BE->>NLP: parseNaturalLanguage("午饭28块")
+    NLP->>NLP: 调用通义千问Function Calling
+    NLP->>NLP: Prompt: "提取金额、分类、类型、备注"
+    NLP-->>BE: {amount:28, category:"餐饮", type:"expense", note:"午饭"}
+    BE->>CLS: classifyTransaction(merchant, amount, category)
+    CLS->>CLS: 规则引擎验证+置信度计算
+    CLS-->>BE: {categoryId, confidence: 0.92}
+
+    alt 置信度 >= 0.9（直接生成）
+        BE->>DB: 写入Transaction
+        BE->>DB: 生成undoToken（5分钟有效）
+        BE->>WS: 广播 transaction:created
+        WS-->>FE: 实时推送给家庭在线成员
+        BE-->>FE: {transaction, confidence, undoToken}
+        FE-->>U: Toast"已记：餐饮 -28元 [撤销]"
+        Note over U,FE: 用户可点击[撤销]在5分钟内撤回
+    else 置信度 < 0.9（需确认）
+        BE-->>FE: {parsedData, confidence: 0.6, needConfirm: true}
+        FE-->>U: 显示快速确认卡片（预填数据）
+        U->>FE: 确认或修改
+        FE->>BE: POST /api/transactions（标准创建）
+        BE->>DB: 写入Transaction
+        BE->>WS: 广播 transaction:created
+        BE-->>FE: {transaction}
+        FE-->>U: Toast"已记：餐饮 -28元"
+    end
+
+
+%% ============================================
+%% 流程3：家庭协同实时同步流程
+%% ============================================
+
+sequenceDiagram
+    autonumber
+    participant UA as 成员A（手机浏览器）
+    participant FA as 前端A
+    participant UB as 成员B（PC浏览器）
+    participant FB as 前端B
+    participant WS as WebSocket网关
+    participant BE as 后端API
+    participant DB as 数据库
+    participant RD as Redis
+
+    Note over UA,UB: 场景：成员A记账，成员B实时看到更新
+
+    %% 初始连接
+    FA->>WS: 建立WebSocket连接
+    FA->>WS: emit family:join {familyId}
+    WS->>RD: 记录 userId→socketId 映射
+    WS->>RD: 添加到 family:{id} 在线集合
+    WS-->>FB: 推送 member:online {userId: A}
+    FB-->>UB: 显示成员A在线绿点
+
+    %% 记账操作
+    UA->>FA: 创建交易"买菜56元"
+    FA->>BE: POST /api/transactions
+    BE->>BE: 验证权限（FamilyPermissionGuard）
+    BE->>DB: 写入Transaction
+    BE-->>FA: 返回成功 + Transaction数据
+    FA-->>UA: 显示Toast"已记：食品 -56元"
+
+    %% 实时同步
+    BE->>WS: broadcastToFamily(familyId, 'transaction:created', data)
+    WS->>RD: 查询 family:{id} 在线成员 socketId 列表
+    WS-->>FB: 推送 transaction:created {transaction, userId: A}
+
+    %% 前端B处理
+    FB->>FB: React Query invalidateQueries(['transactions'])
+    FB->>BE: GET /api/transactions?since=lastUpdate
+    BE->>DB: 查询增量数据
+    BE-->>FB: 返回新交易数据
+    FB->>FB: 更新交易列表（乐观更新）
+    FB->>FB: 更新仪表盘统计数据
+    FB-->>UB: 页面无刷新更新，显示新交易
+
+    %% 预算预警检查
+    BE->>BE: 检查该交易是否触发预算阈值
+
+    alt 支出达预算80%
+        BE->>DB: 写入Notification记录
+        BE->>WS: emit budget:alert {type:'warning', categoryId, percentage:0.82}
+        WS-->>FA: 推送预算预警
+        WS-->>FB: 推送预算预警
+        FA->>FA: 触发Web Notification（已授权）
+        FA-->>UA: 系统通知"食品预算已用82%，加油！"
+        FB->>FB: 触发Web Notification
+        FB-->>UB: 系统通知"食品预算已用82%，加油！"
+    end
+
+    %% 离线处理
+    UA->>FA: 关闭浏览器
+    FA->>WS: 断开WebSocket连接
+    WS->>RD: 移除 userId→socketId 映射
+    WS->>RD: 从 family:{id} 在线集合移除
+    WS-->>FB: 推送 member:offline {userId: A}
+    FB-->>UB: 成员A绿点变灰

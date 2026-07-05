@@ -1,0 +1,53 @@
+version: '3.8'
+
+# 开发环境：仅启动 PostgreSQL + Redis
+# 前后端通过 npm run dev 本地启动，便于热更新调试
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: family_finance_pg_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: family_finance
+      POSTGRES_USER: family_finance
+      POSTGRES_PASSWORD: family_finance_pwd
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_dev_data:/var/lib/postgresql/data
+      - ./docker/pg-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U family_finance -d family_finance"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - family_finance_dev_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: family_finance_redis_dev
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - family_finance_dev_net
+
+volumes:
+  pg_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
+networks:
+  family_finance_dev_net:
+    driver: bridge
