@@ -7,16 +7,16 @@ services:
     container_name: family_finance_pg
     restart: unless-stopped
     environment:
-      POSTGRES_DB: family_finance
-      POSTGRES_USER: family_finance
-      POSTGRES_PASSWORD: family_finance_pwd
+      POSTGRES_DB: ${DB_NAME:-family_finance}
+      POSTGRES_USER: ${DB_USER:-family_finance}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-family_finance_pwd}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./docker/pg-init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U family_finance -d family_finance"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-family_finance} -d ${DB_NAME:-family_finance}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,9 +28,9 @@ services:
     image: redis:7-alpine
     container_name: family_finance_redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -48,15 +48,18 @@ services:
       dockerfile: Dockerfile
     container_name: family_finance_backend
     restart: unless-stopped
+    env_file: .env
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://family_finance:family_finance_pwd@postgres:5432/family_finance?schema=public
+      DATABASE_URL: postgresql://${DB_USER:-family_finance}:${DB_PASSWORD:-family_finance_pwd}@postgres:5432/${DB_NAME:-family_finance}?schema=public
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       PORT: 3001
-      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
     ports:
       - "3001:3001"
+    volumes:
+      - backend_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,15 +68,19 @@ services:
     networks:
       - family_finance_net
 
-  # ==================== 前端 Vite ====================
+  # ==================== 前端 Nginx ====================
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+        VITE_WS_URL: ${VITE_WS_URL:-}
+        VITE_APP_NAME: ${VITE_APP_NAME:-家庭财务管家}
     container_name: family_finance_frontend
     restart: unless-stopped
     ports:
-      - "5173:80"
+      - "80:80"
     depends_on:
       - backend
     networks:
@@ -83,6 +90,8 @@ volumes:
   pg_data:
     driver: local
   redis_data:
+    driver: local
+  backend_uploads:
     driver: local
 
 networks:

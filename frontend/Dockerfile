@@ -15,6 +15,15 @@ RUN npm ci
 # 复制源代码
 COPY . .
 
+# 注入构建时环境变量（通过 docker-compose build args 传入）
+ARG VITE_API_BASE_URL=/api
+ARG VITE_WS_URL=
+ARG VITE_APP_NAME=家庭财务管家
+
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_WS_URL=${VITE_WS_URL}
+ENV VITE_APP_NAME=${VITE_APP_NAME}
+
 # 构建生产版本
 RUN npm run build
 
