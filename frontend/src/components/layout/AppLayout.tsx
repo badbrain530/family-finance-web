@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { MobileNav } from './MobileNav';
+import { FloatingQuickRecordButton } from './FloatingQuickRecordButton';
 import { QuickRecordModal } from '@/features/transactions/QuickRecordModal';
 import { CommandPalette } from '@/components/common/CommandPalette';
 import { Toaster } from '@/components/ui/toaster';
@@ -43,6 +44,9 @@ export function AppLayout() {
         {/* 移动端底部导航 */}
         <MobileNav />
       </div>
+
+      {/* 移动端快捷记账悬浮按钮 */}
+      <FloatingQuickRecordButton />
 
       {/* 全局浮层组件 */}
       <QuickRecordModal />
