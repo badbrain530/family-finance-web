@@ -50,6 +50,9 @@ yarn-error.log*
 # Docker
 docker-compose.override.yml
 
+# Secrets / SSL certificates (never commit — mounted at runtime via bind mount)
+ssl/
+
 # Prisma
 backend/prisma/migrations/dev.db
 backend/prisma/migrations/*.db-journal
