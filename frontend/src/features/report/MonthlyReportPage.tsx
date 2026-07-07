@@ -235,7 +235,7 @@ export function MonthlyReportPage() {
               {
                 name: '本月',
                 data: report.categoryBreakdown.map((c) => c.amount),
-                color: '#00C896',
+                color: '#3B82F6',
               },
               {
                 name: '上月',

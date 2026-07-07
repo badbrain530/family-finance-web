@@ -36,7 +36,7 @@ const NOTIFICATION_META: Record<
   BUDGET_SUCCESS: { label: '预算达成', icon: CheckCircle, color: '#16A34A', route: '/budget' },
   LARGE_EXPENSE: { label: '大额支出', icon: CreditCard, color: '#DC2626', route: '/transactions' },
   MONTHLY_REPORT: { label: '月报生成', icon: FileText, color: '#6366F1', route: '/reports' },
-  FAMILY_MEMBER_JOIN: { label: '成员加入', icon: Users, color: '#00C896', route: '/family' },
+  FAMILY_MEMBER_JOIN: { label: '成员加入', icon: Users, color: '#3B82F6', route: '/family' },
   IMPORT_COMPLETE: { label: '导入完成', icon: Upload, color: '#3B82F6', route: '/transactions' },
 };
 

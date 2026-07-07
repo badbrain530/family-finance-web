@@ -125,7 +125,7 @@ export function BarChart({
       barMaxWidth: 32,
       itemStyle: {
         borderRadius: horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0],
-        color: s.color || '#00C896',
+        color: s.color || '#3B82F6',
       },
     })),
   };

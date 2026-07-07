@@ -105,11 +105,11 @@ export const ACCOUNT_TYPE_META: Record<
   AccountType,
   { label: string; icon: string; color: string }
 > = {
-  DEBIT: { label: '储蓄卡', icon: 'CreditCard', color: '#00C896' },
+  DEBIT: { label: '储蓄卡', icon: 'CreditCard', color: '#3B82F6' },
   CREDIT: { label: '信用卡', icon: 'CreditCard', color: '#F59E0B' },
   INVESTMENT: { label: '投资', icon: 'TrendingUp', color: '#6366F1' },
   CASH: { label: '现金', icon: 'Banknote', color: '#10B981' },
-  E_WALLET: { label: '钱包', icon: 'Wallet', color: '#3B82F6' },
+  E_WALLET: { label: '钱包', icon: 'Wallet', color: '#0EA5E9' },
   VIRTUAL: { label: '虚拟', icon: 'Sparkles', color: '#A855F7' },
 };
 

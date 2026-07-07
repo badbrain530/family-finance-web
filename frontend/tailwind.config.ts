@@ -2,8 +2,9 @@ import type { Config } from 'tailwindcss';
 
 /**
  * Tailwind CSS 配置
- * 主色：翡翠绿 #00C896
- * 支出红色 / 收入绿色 / 预算超支红色
+ * 主色：蓝灰 #3B82F6（Light）/ #60A5FA（Dark），对齐设计稿 family-finance-app/styles.css
+ * 收入绿(success) / 支出红(danger) / 警告黄(warning) / 信息蓝(info)
+ * 浅色系与主色经 CSS 变量驱动，深色模式一键反相
  */
 const config: Config = {
   darkMode: ['class'],
@@ -14,63 +15,78 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // 翡翠绿主色系
+        // 蓝灰主色系（Light #3B82F6 / Dark #60A5FA，对齐设计稿）
+        // 颜色以 CSS 变量（RGB 通道）驱动，外层 rgb(var() / <alpha-value>) 以支持 /透明度 修饰符与深色反相
         primary: {
-          DEFAULT: '#00C896', // 主色默认值
-          50: '#E6FFF8',
-          100: '#C2FFEE',
-          200: '#8DFFDD',
-          300: '#4FFFC8',
-          400: '#1FE8B0',
-          500: '#00C896', // 主色
-          600: '#00A87E',
-          700: '#008866',
-          800: '#006E52',
-          900: '#005841',
-          950: '#003D2C',
+          DEFAULT: 'rgb(var(--color-primary) / <alpha-value>)',
+          hover: 'rgb(var(--color-primary-hover) / <alpha-value>)',
+          soft: 'rgb(var(--color-primary-soft) / <alpha-value>)',
+          50: 'rgb(var(--color-primary-soft) / <alpha-value>)',
+          100: 'rgb(var(--color-primary-soft-2) / <alpha-value>)',
+          200: 'rgb(var(--color-primary-200) / <alpha-value>)',
+          300: 'rgb(var(--color-primary-300) / <alpha-value>)',
+          400: '#60A5FA',
+          500: 'rgb(var(--color-primary) / <alpha-value>)',
+          600: 'rgb(var(--color-primary-deep) / <alpha-value>)',
+          700: 'rgb(var(--color-primary-deep) / <alpha-value>)',
+          800: '#1E40AF',
+          900: '#1E3A8A',
+          950: '#172554',
         },
-        // 收入绿色
+        // 收入绿（success 语义）—— 不再与主色撞色
         income: {
-          DEFAULT: '#16A34A',
-          light: '#22C55E',
-          dark: '#15803D',
+          DEFAULT: 'rgb(var(--color-success) / <alpha-value>)',
+          light: 'rgb(var(--color-success) / <alpha-value>)',
+          dark: 'rgb(var(--color-success-strong) / <alpha-value>)',
         },
-        // 支出红色
+        // 支出红（danger 语义）
         expense: {
-          DEFAULT: '#DC2626',
-          light: '#EF4444',
-          dark: '#B91C1C',
+          DEFAULT: 'rgb(var(--color-danger) / <alpha-value>)',
+          light: 'rgb(var(--color-danger) / <alpha-value>)',
+          dark: 'rgb(var(--color-danger-strong) / <alpha-value>)',
         },
-        // 预算超支红色
+        // 预算状态色（对齐 success/danger/warning）
         budgetDanger: {
-          DEFAULT: '#EF4444',
-          light: '#F87171',
-          dark: '#DC2626',
+          DEFAULT: 'rgb(var(--color-danger) / <alpha-value>)',
+          light: 'rgb(var(--color-danger) / <alpha-value>)',
+          dark: 'rgb(var(--color-danger-strong) / <alpha-value>)',
         },
-        // 预算安全绿色
         budgetSafe: {
-          DEFAULT: '#00C896',
-          light: '#4FFFC8',
-          dark: '#00A87E',
+          DEFAULT: 'rgb(var(--color-success) / <alpha-value>)',
+          light: 'rgb(var(--color-success) / <alpha-value>)',
+          dark: 'rgb(var(--color-success-strong) / <alpha-value>)',
         },
-        // 预算警告黄色
         budgetWarning: {
-          DEFAULT: '#F59E0B',
-          light: '#FBBF24',
-          dark: '#D97706',
+          DEFAULT: 'rgb(var(--color-warning) / <alpha-value>)',
+          light: 'rgb(var(--color-warning) / <alpha-value>)',
+          dark: 'rgb(var(--color-warning) / <alpha-value>)',
         },
+        // 语义别名（设计稿 token 命名）
+        success: {
+          DEFAULT: 'rgb(var(--color-success) / <alpha-value>)',
+          light: 'rgb(var(--color-success) / <alpha-value>)',
+          dark: 'rgb(var(--color-success-strong) / <alpha-value>)',
+        },
+        danger: {
+          DEFAULT: 'rgb(var(--color-danger) / <alpha-value>)',
+          light: 'rgb(var(--color-danger) / <alpha-value>)',
+          dark: 'rgb(var(--color-danger-strong) / <alpha-value>)',
+        },
+        warning: 'rgb(var(--color-warning) / <alpha-value>)',
+        info: 'rgb(var(--color-info) / <alpha-value>)',
         // 背景色（跟随 CSS 变量，便于深色模式统一切换）
-        background: 'var(--color-bg)',
-        surface: 'var(--color-surface)',
-        'surface-dark': 'var(--color-surface-dark)',
+        background: 'rgb(var(--color-bg) / <alpha-value>)',
+        surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        'surface-raised': 'rgb(var(--color-surface-raised) / <alpha-value>)',
+        'surface-dark': 'rgb(var(--color-surface-dark) / <alpha-value>)',
         // 文本色（跟随 CSS 变量）
-        'text-primary': 'var(--color-text-primary)',
-        'text-secondary': 'var(--color-text-secondary)',
-        'text-tertiary': 'var(--color-text-tertiary)',
+        'text-primary': 'rgb(var(--color-text-primary) / <alpha-value>)',
+        'text-secondary': 'rgb(var(--color-text-secondary) / <alpha-value>)',
+        'text-tertiary': 'rgb(var(--color-text-tertiary) / <alpha-value>)',
         'text-inverse': '#FFFFFF',
         // 边框色（跟随 CSS 变量）
-        border: 'var(--color-border)',
-        'border-dark': 'var(--color-border-dark)',
+        border: 'rgb(var(--color-border) / <alpha-value>)',
+        'border-dark': 'rgb(var(--color-border-dark) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],

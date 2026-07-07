@@ -115,10 +115,10 @@ export function LineChart({
       showSymbol: false,
       lineStyle: {
         width: 2,
-        color: s.color || '#00C896',
+        color: s.color || '#3B82F6',
       },
       itemStyle: {
-        color: s.color || '#00C896',
+        color: s.color || '#3B82F6',
       },
       areaStyle: s.areaStyle
         ? {
@@ -129,8 +129,8 @@ export function LineChart({
               x2: 0,
               y2: 1,
               colorStops: [
-                { offset: 0, color: (s.color || '#00C896') + '33' },
-                { offset: 1, color: (s.color || '#00C896') + '05' },
+                { offset: 0, color: (s.color || '#3B82F6') + '33' },
+                { offset: 1, color: (s.color || '#3B82F6') + '05' },
               ],
             },
           }

@@ -6,53 +6,77 @@
 
 @layer base {
   :root {
-    /* 翡翠绿主色 */
-    --color-primary: #00C896;
-    --color-primary-hover: #00A87E;
-    --color-primary-light: #E6FFF8;
+    /* 蓝灰主色（Light 主色 #3B82F6，对齐设计稿 family-finance-app/styles.css）
+       变量以「R G B」通道形式存储，供 Tailwind 的 rgb(var(--x) / <alpha-value>) 支持透明度修饰符 */
+    --color-primary: 59 130 246;          /* #3B82F6 */
+    --color-primary-hover: 37 99 235;     /* #2563EB */
+    --color-primary-deep: 37 99 235;      /* #2563EB 主色深端 / 悬停 / 激活文字 */
+    --color-primary-soft: 239 246 255;    /* #EFF6FF 浅蓝激活底 */
+    --color-primary-soft-2: 239 246 255;  /* #EFF6FF 次级激活底（账单导入等） */
+    --color-primary-200: 191 219 254;     /* #BFDBFE 浅蓝描边 */
+    --color-primary-300: 147 197 253;     /* #93C5FD 浅蓝描边（深端） */
 
-    /* 收支配色 */
-    --color-income: #16A34A;
-    --color-expense: #DC2626;
+    /* 语义色：收入(正向)/支出(错误)/警告/信息 */
+    --color-success: 16 185 129;          /* #10B981 收入绿（不再与主色撞色） */
+    --color-success-strong: 5 150 105;    /* #059669 */
+    --color-danger: 239 68 68;            /* #EF4444 支出红 */
+    --color-danger-strong: 220 38 38;     /* #DC2626 */
+    --color-warning: 245 158 11;          /* #F59E0B */
+    --color-info: 59 130 246;             /* #3B82F6 */
 
     /* 背景 */
-    --color-bg: #F8FAFC;
-    --color-surface: #FFFFFF;
-    --color-surface-dark: #0F172A;
+    --color-bg: 248 249 250;              /* #F8F9FA */
+    --color-surface: 255 255 255;         /* #FFFFFF */
+    --color-surface-raised: 255 255 255;  /* #FFFFFF 浮层/弹窗/下拉（深色下转深蓝灰） */
+    --color-surface-dark: 241 245 249;    /* #F1F5F9 次级表面（表格头等） */
 
     /* 文本 */
-    --color-text-primary: #0F172A;
-    --color-text-secondary: #64748B;
-    --color-text-tertiary: #94A3B8;
+    --color-text-primary: 15 23 42;       /* #0F172A */
+    --color-text-secondary: 100 116 139;  /* #64748B */
+    --color-text-tertiary: 148 163 184;   /* #94A3B8 */
 
     /* 边框 */
-    --color-border: #E2E8F0;
-    --color-border-dark: #334155;
+    --color-border: 226 232 240;          /* #E2E8F0 */
+    --color-border-dark: 51 65 85;        /* #334155 */
 
     /* 侧边栏 */
     --sidebar-width: 240px;
     --header-height: 64px;
   }
 
-  /* ==================== 深色模式变量覆写 ==================== */
+  /* ==================== 深色模式变量覆写（深蓝灰 #0B1220） ==================== */
   .dark {
-    /* 收支配色在深色下略提亮以保证对比度 */
-    --color-income: #22C55E;
-    --color-expense: #F87171;
+    /* 主色在深色下提亮为浅蓝，保证对比度 */
+    --color-primary: 96 165 250;          /* #60A5FA */
+    --color-primary-hover: 147 197 253;   /* #93C5FD */
+    --color-primary-deep: 147 197 253;    /* #93C5FD */
+    --color-primary-soft: 30 41 59;       /* #1E293B */
+    --color-primary-soft-2: 30 41 59;     /* #1E293B */
+    --color-primary-200: 36 48 73;        /* #243049 */
+    --color-primary-300: 52 80 122;       /* #34507A */
 
-    /* 背景（更深的 slate 色阶，避免刺眼纯黑） */
-    --color-bg: #0F172A;
-    --color-surface: #1E293B;
-    --color-surface-dark: #0B1220;
+    /* 语义色提亮 */
+    --color-success: 52 211 153;          /* #34D399 */
+    --color-success-strong: 16 185 129;   /* #10B981 */
+    --color-danger: 248 113 113;          /* #F87171 */
+    --color-danger-strong: 239 68 68;     /* #EF4444 */
+    --color-warning: 251 191 36;          /* #FBBF24 */
+    --color-info: 96 165 250;             /* #60A5FA */
+
+    /* 背景（深蓝灰，护眼） */
+    --color-bg: 11 18 32;                 /* #0B1220 */
+    --color-surface: 19 26 42;            /* #131A2A */
+    --color-surface-raised: 26 34 54;     /* #1A2236 */
+    --color-surface-dark: 26 34 54;       /* #1A2236 */
 
     /* 文本 */
-    --color-text-primary: #F1F5F9;
-    --color-text-secondary: #94A3B8;
-    --color-text-tertiary: #64748B;
+    --color-text-primary: 226 232 240;    /* #E2E8F0 */
+    --color-text-secondary: 148 163 184;  /* #94A3B8 */
+    --color-text-tertiary: 100 116 139;   /* #64748B */
 
     /* 边框 */
-    --color-border: #334155;
-    --color-border-dark: #475569;
+    --color-border: 42 52 71;             /* #2A3447 */
+    --color-border-dark: 52 66 86;        /* #344256 */
   }
 
   * {

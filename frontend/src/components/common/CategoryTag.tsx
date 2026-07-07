@@ -37,7 +37,7 @@ export function CategoryTag({ category, className, size = 'sm' }: CategoryTagPro
     >
       <span
         className="w-2 h-2 rounded-full shrink-0"
-        style={{ backgroundColor: category.color || '#00C896' }}
+        style={{ backgroundColor: category.color || '#3B82F6' }}
       />
       {category.name}
     </span>
