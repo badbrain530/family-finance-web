@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Users,
   UserPlus,
@@ -15,6 +16,8 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
+import { createFamily } from '@/services/family.service';
+import type { Family } from '@/types/family';
 
 /**
  * Onboarding 引导页面
@@ -22,12 +25,31 @@ import { useAuthStore } from '@/store/authStore';
  */
 export function OnboardingPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const [step, setStep] = useState(0);
   const [familyName, setFamilyName] = useState('');
   const [mode, setMode] = useState<'family' | 'personal'>('family');
-  const [inviteCode, setInviteCode] = useState('');
-  const [loading] = useState(false);
+  const [createdFamily, setCreatedFamily] = useState<Family | null>(null);
+
+  // 创建家庭的 mutation：事务内建 family + OWNER 成员 + 账本，并自动初始化默认分类。
+  // 仅接收一个 name 字段（后端 CreateFamilyDto 只要求 name）。
+  const createFamilyMutation = useMutation({
+    mutationFn: (name: string) => createFamily({ name }),
+    onSuccess: (family: Family) => setCreatedFamily(family),
+  });
+
+  // loading 直接复用 mutation 的 pending 状态，确保按钮 disabled 真实生效。
+  const loading = createFamilyMutation.isPending;
+
+  // 确保已创建家庭：若已创建则直接返回缓存结果，否则调用后端创建。
+  const ensureFamily = async (): Promise<Family> => {
+    if (createdFamily) return createdFamily;
+    const res = await createFamilyMutation.mutateAsync(
+      familyName.trim() || '我的家庭',
+    );
+    return res;
+  };
 
   const steps = [
     { title: '创建家庭', icon: Home, desc: '设置你的家庭名称和模式' },
@@ -35,12 +57,23 @@ export function OnboardingPage() {
     { title: '初始化分类', icon: Tags, desc: '选择适合你的分类体系' },
   ];
 
-  const handleNext = () => {
-    if (step < 2) {
-      setStep(step + 1);
-    } else {
-      // 完成引导，跳转仪表盘
-      navigate('/dashboard');
+  const handleNext = async () => {
+    try {
+      if (step < 2) {
+        // 离开「创建家庭」步骤时，先确保家庭已创建（step===0）。
+        if (step === 0) {
+          await ensureFamily();
+        }
+        setStep(step + 1);
+      } else {
+        // 完成引导：确保家庭已创建 → 失效 currentFamily 缓存 → 跳转仪表盘。
+        await ensureFamily();
+        queryClient.invalidateQueries({ queryKey: ['currentFamily'] });
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      // 创建失败不打断流程，避免白屏崩溃；仅记录错误。
+      console.error('[Onboarding] 创建家庭失败:', err);
     }
   };
 
@@ -48,8 +81,16 @@ export function OnboardingPage() {
     if (step > 0) setStep(step - 1);
   };
 
-  const handleSkip = () => {
-    navigate('/dashboard');
+  const handleSkip = async () => {
+    try {
+      // 即使跳过引导，也要确保家庭已建立，否则仪表盘会报「您还没有加入任何家庭」。
+      await ensureFamily();
+      queryClient.invalidateQueries({ queryKey: ['currentFamily'] });
+      navigate('/dashboard');
+    } catch (err) {
+      console.error('[Onboarding] 创建家庭失败:', err);
+      navigate('/dashboard');
+    }
   };
 
   return (
@@ -62,7 +103,8 @@ export function OnboardingPage() {
           </span>
           <button
             onClick={handleSkip}
-            className="text-sm text-text-secondary hover:text-primary transition-colors"
+            disabled={loading}
+            className="text-sm text-text-secondary hover:text-primary transition-colors disabled:opacity-50"
           >
             跳过引导
           </button>
@@ -185,7 +227,7 @@ export function OnboardingPage() {
                 <div className="p-6 rounded-xl bg-gradient-to-br from-primary-50 to-primary-100/50 text-center">
                   <p className="text-sm text-text-secondary mb-3">你的家庭邀请码</p>
                   <div className="text-4xl font-bold text-primary tracking-widest mb-2">
-                    {inviteCode || '8KQ2X9'}
+                    {createdFamily?.inviteCode || '------'}
                   </div>
                   <p className="text-xs text-text-tertiary">
                     邀请码7天内有效，家人注册后输入即可加入
@@ -197,7 +239,10 @@ export function OnboardingPage() {
                     variant="outline"
                     className="flex-1"
                     onClick={() => {
-                      setInviteCode(inviteCode || '8KQ2X9');
+                      const code = createdFamily?.inviteCode;
+                      if (code) {
+                        void navigator.clipboard?.writeText(code).catch(() => undefined);
+                      }
                     }}
                   >
                     复制邀请码
@@ -269,7 +314,7 @@ export function OnboardingPage() {
             <Button
               variant="ghost"
               onClick={handlePrev}
-              disabled={step === 0}
+              disabled={step === 0 || loading}
               className="text-text-secondary"
             >
               <ChevronLeft size={16} />
@@ -277,8 +322,8 @@ export function OnboardingPage() {
             </Button>
 
             <Button onClick={handleNext} disabled={loading}>
-              {step === 2 ? '完成设置' : '下一步'}
-              <ChevronRight size={16} />
+              {loading ? '处理中…' : step === 2 ? '完成设置' : '下一步'}
+              {!loading && <ChevronRight size={16} />}
             </Button>
           </div>
         </div>
