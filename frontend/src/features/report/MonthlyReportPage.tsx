@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   TrendingUp,
   TrendingDown,
@@ -24,10 +24,19 @@ import { useIsMobile } from '@/hooks/useMediaQuery';
 import { cn, formatCurrency, formatPercentage, formatDate, getCurrentYearMonth } from '@/lib/utils';
 import { MONTH_NAMES } from '@/lib/constants';
 import type { MonthlyReport, AdviceItem } from '@/types/report';
+import { getCurrentFamily } from '@/services/family.service';
+import { getMonthlyReport, generateMonthlyReport } from '@/services/report.service';
+import { useToast } from '@/components/ui/toast';
 
 /**
- * AI洞察月报页面
- * 月份选择 + 3个KPI（含环比）+ AI建议列表 + 收支分类对比图
+ * AI洞察月报页面（根因修复版）
+ *
+ * 改动要点（最小变更）：
+ * 1. 删除全部写死假数据（mockReport）与 `return null` 的占位 queryFn。
+ * 2. familyId 取自真实「当前家庭」getCurrentFamily()，不再硬编码 'f1'。
+ * 3. 接入真实月报接口 getMonthlyReport / generateMonthlyReport。
+ * 4. 无月报（后端 3004）时展示「生成月报」空状态，点击生成后 refetch。
+ * 5. 保留并发防御：report 某字段缺失时用 ?? [] / 默认值兜底，避免结构不全崩溃。
  */
 
 // 建议分类图标配置
@@ -58,93 +67,83 @@ export function MonthlyReportPage() {
   const [displayYear, setDisplayYear] = useState(year);
   const [displayMonth, setDisplayMonth] = useState(month);
   const [adviceFeedback, setAdviceFeedback] = useState<Record<string, boolean | null>>({});
+  const { toast } = useToast();
 
-  // TanStack Query 获取月报数据
-  const { data: reportData, isLoading } = useQuery({
-    queryKey: ['monthly-report', displayYear, displayMonth],
-    queryFn: async () => {
-      // TODO: 接入真实 API
-      return null;
+  // 当前家庭（正确的 familyId 来源，对齐 DashboardPage）
+  const familyQuery = useQuery({
+    queryKey: ['currentFamily'],
+    queryFn: getCurrentFamily,
+  });
+  const familyId = familyQuery.data?.id ?? '';
+
+  // 月报查询（真实接口）。queryKey 含年月，切换月份自动重新请求。
+  const {
+    data: reportData,
+    isLoading: isReportLoading,
+    isError: isReportError,
+    error: reportError,
+    refetch: refetchReport,
+  } = useQuery<MonthlyReport>({
+    queryKey: ['monthly-report', familyId, displayYear, displayMonth],
+    queryFn: () => getMonthlyReport(familyId, displayYear, displayMonth),
+    enabled: !!familyId,
+    retry: false,
+  });
+
+  // 生成月报（点击空状态的「生成月报」按钮触发）
+  const generateMutation = useMutation({
+    mutationFn: () => generateMonthlyReport(familyId, displayYear, displayMonth),
+    onSuccess: () => {
+      toast({ title: '月报已生成', description: '已基于本月真实交易数据统计', variant: 'success' });
+      refetchReport();
+    },
+    onError: (err: Error) => {
+      toast({
+        title: '生成失败',
+        description: err?.message || '请稍后重试',
+        variant: 'destructive',
+      });
     },
   });
 
-  // 暂用常量（后续移除）
-  const mockReport: MonthlyReport = {
-    id: 'r1',
-    familyId: 'f1',
-    year: 2026,
-    month: 7,
-    totalIncome: 18500,
-    totalExpense: 12380.5,
-    balance: 6119.5,
-    previousMonthBalance: 5200,
-    categoryBreakdown: [
-      { categoryId: 'c1', categoryName: '食品烟酒', amount: 4200, percentage: 33.9, previousMonthAmount: 3800, trend: 'up' },
-      { categoryId: 'c2', categoryName: '居住', amount: 3500, percentage: 28.3, previousMonthAmount: 3500, trend: 'flat' },
-      { categoryId: 'c3', categoryName: '交通通信', amount: 1800, percentage: 14.5, previousMonthAmount: 1500, trend: 'up' },
-      { categoryId: 'c4', categoryName: '教育文化', amount: 1500, percentage: 12.1, previousMonthAmount: 2000, trend: 'down' },
-      { categoryId: 'c5', categoryName: '生活用品', amount: 980, percentage: 7.9, previousMonthAmount: 700, trend: 'up' },
-      { categoryId: 'c6', categoryName: '其他', amount: 400.5, percentage: 3.3, previousMonthAmount: 300, trend: 'up' },
-    ],
-    anomalies: [
-      { type: 'large_single', description: '7月3日 华润万家消费 ¥1,280', amount: 1280, categoryId: 'c1', date: '2026-07-03' },
-      { type: 'category_spike', description: '交通通信支出环比增长20%', amount: 300, categoryId: 'c3', date: '2026-07-04' },
-    ],
-    advice: [
-      { id: 'a1', category: 'saving', title: '食品烟酒支出偏高', content: '本月食品烟酒支出4200元...', actionType: 'adjust_budget', actionUrl: '/budget', isHelpful: null },
-      { id: 'a2', category: 'budget', title: '交通通信即将超预算', content: '交通通信已用90%预算...', actionType: 'view_budget', actionUrl: '/budget', isHelpful: null },
-      { id: 'a3', category: 'goal', title: '日本旅行基金进度良好', content: '你的日本旅行基金已存56.7%...', actionType: 'view_goal', actionUrl: '/budget', isHelpful: null },
-      { id: 'a4', category: 'anomaly', title: '检测到大额支出', content: '7月3日华润万家消费1280元...', actionType: null, actionUrl: null, isHelpful: null },
-    ],
-    benchmarkComparison: null,
-    generatedAt: '2026-07-04T08:00:00Z',
-    readBy: [],
-  };
-
-  if (isLoading) {
+  // 加载态：家庭或月报任一加载中（且已拿到 familyId 才显示月报加载）
+  if (familyQuery.isLoading || (isReportLoading && familyId)) {
     return <LoadingSpinner fullScreen />;
   }
 
-  const report = reportData || mockReport;
+  // 家庭加载失败
+  if (familyQuery.isError) {
+    return (
+      <div className="page-container">
+        <Card className="mt-10">
+          <CardHeader>
+            <CardTitle className="text-base text-expense">加载家庭失败</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-text-secondary">
+              {familyQuery.error?.message || '加载家庭信息失败，请稍后重试'}
+            </p>
+            <Button variant="outline" onClick={() => familyQuery.refetch()}>
+              重试
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-  // 环比计算
-  const balanceChange = report.balance - (report.previousMonthBalance || 0);
-  const balanceChangePercent = report.previousMonthBalance
-    ? ((balanceChange / report.previousMonthBalance) * 100)
-    : 0;
-  const isBalanceUp = balanceChange > 0;
-
-  // KPI卡片
-  const kpiCards = [
-    {
-      label: '本月收入',
-      value: report.totalIncome,
-      icon: ArrowUpRight,
-      color: 'text-income',
-      bgColor: 'bg-income/10',
-      change: null,
-    },
-    {
-      label: '本月支出',
-      value: report.totalExpense,
-      icon: ArrowDownRight,
-      color: 'text-expense',
-      bgColor: 'bg-expense/10',
-      change: null,
-    },
-    {
-      label: '本月结余',
-      value: report.balance,
-      icon: Wallet,
-      color: 'text-primary',
-      bgColor: 'bg-primary/10',
-      change: {
-        value: Math.abs(balanceChange),
-        percent: Math.abs(balanceChangePercent),
-        isUp: isBalanceUp,
-      },
-    },
-  ];
+  // 并发防御：缺失字段兜底，保证结构完整、可安全渲染
+  const report: MonthlyReport | null = reportData
+    ? {
+        ...reportData,
+        categoryBreakdown: reportData.categoryBreakdown ?? [],
+        anomalies: reportData.anomalies ?? [],
+        advice: reportData.advice ?? [],
+        readBy: reportData.readBy ?? [],
+        previousMonthBalance: reportData.previousMonthBalance ?? 0,
+        benchmarkComparison: reportData.benchmarkComparison ?? null,
+      }
+    : null;
 
   // 月份切换
   const handlePrevMonth = () => {
@@ -161,6 +160,207 @@ export function MonthlyReportPage() {
     setAdviceFeedback((prev) => ({ ...prev, [adviceId]: isHelpful }));
   };
 
+  // 渲染已有月报内容（入参已确保非 null，规避闭包内可空收窄问题）
+  const renderReportContent = (r: MonthlyReport) => {
+    const balanceChange = r.balance - (r.previousMonthBalance || 0);
+    const balanceChangePercent = r.previousMonthBalance
+      ? ((balanceChange / r.previousMonthBalance) * 100)
+      : 0;
+    const isBalanceUp = balanceChange > 0;
+
+    const kpiCards = [
+      {
+        label: '本月收入',
+        value: r.totalIncome,
+        icon: ArrowUpRight,
+        color: 'text-income',
+        bgColor: 'bg-income/10',
+        change: null,
+      },
+      {
+        label: '本月支出',
+        value: r.totalExpense,
+        icon: ArrowDownRight,
+        color: 'text-expense',
+        bgColor: 'bg-expense/10',
+        change: null,
+      },
+      {
+        label: '本月结余',
+        value: r.balance,
+        icon: Wallet,
+        color: 'text-primary',
+        bgColor: 'bg-primary/10',
+        change: {
+          value: Math.abs(balanceChange),
+          percent: Math.abs(balanceChangePercent),
+          isUp: isBalanceUp,
+        },
+      },
+    ];
+
+    return (
+      <>
+        {/* KPI 卡片 */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {kpiCards.map((kpi) => {
+            const Icon = kpi.icon;
+            return (
+              <Card key={kpi.label} className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm text-text-secondary">{kpi.label}</span>
+                  <div className={`w-10 h-10 rounded-lg ${kpi.bgColor} flex items-center justify-center`}>
+                    <Icon size={20} className={kpi.color} />
+                  </div>
+                </div>
+                <p className={`text-2xl font-bold ${kpi.color} tabular-nums`}>
+                  {formatCurrency(kpi.value)}
+                </p>
+                {kpi.change && (
+                  <div className="flex items-center gap-1 mt-2">
+                    {kpi.change.isUp ? (
+                      <TrendingUp size={12} className="text-income" />
+                    ) : (
+                      <TrendingDown size={12} className="text-expense" />
+                    )}
+                    <span className={cn(
+                      'text-xs font-medium',
+                      kpi.change.isUp ? 'text-income' : 'text-expense',
+                    )}>
+                      环比{kpi.change.isUp ? '增加' : '减少'} {formatCurrency(kpi.change.value)} ({formatPercentage(kpi.change.percent)})
+                    </span>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* 收支分类对比图 */}
+        <Card className="mb-6">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">收支分类对比</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <BarChart
+              xLabels={r.categoryBreakdown.map((c) => c.categoryName)}
+              series={[
+                {
+                  name: '本月',
+                  data: r.categoryBreakdown.map((c) => c.amount),
+                  color: '#3B82F6',
+                },
+                {
+                  name: '上月',
+                  data: r.categoryBreakdown.map((c) => c.previousMonthAmount || 0),
+                  color: '#94A3B8',
+                },
+              ]}
+              height={isMobile ? 280 : 320}
+              showLegend
+            />
+          </CardContent>
+        </Card>
+
+        {/* AI建议列表 */}
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Sparkles size={18} className="text-primary" />
+              </div>
+              <div>
+                <CardTitle className="text-base">AI智能建议</CardTitle>
+                <p className="text-xs text-text-tertiary mt-0.5">基于本月数据分析生成</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {r.advice.map((advice) => {
+              const Icon = ADVICE_ICON[advice.category];
+              const feedback = adviceFeedback[advice.id];
+              return (
+                <div
+                  key={advice.id}
+                  className="flex gap-3 p-4 rounded-xl border border-border hover:border-primary-200 transition-colors"
+                >
+                  {/* 图标 */}
+                  <div className={`w-9 h-9 rounded-lg ${ADVICE_BG[advice.category]} flex items-center justify-center shrink-0`}>
+                    <Icon size={18} className={ADVICE_COLOR[advice.category]} />
+                  </div>
+
+                  {/* 内容 */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <h4 className="text-sm font-semibold text-text-primary">{advice.title}</h4>
+                      {advice.actionUrl && (
+                        <Button variant="ghost" size="sm" className="text-primary text-xs shrink-0" asChild>
+                          <a href={advice.actionUrl}>查看</a>
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-sm text-text-secondary leading-relaxed">{advice.content}</p>
+
+                    {/* 反馈按钮 */}
+                    <div className="flex items-center gap-2 mt-3">
+                      <span className="text-xs text-text-tertiary">这条建议有帮助吗？</span>
+                      <button
+                        onClick={() => handleFeedback(advice.id, true)}
+                        className={cn(
+                          'p-1 rounded transition-colors',
+                          feedback === true ? 'text-income bg-income/10' : 'text-text-tertiary hover:text-income',
+                        )}
+                      >
+                        <ThumbsUp size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleFeedback(advice.id, false)}
+                        className={cn(
+                          'p-1 rounded transition-colors',
+                          feedback === false ? 'text-expense bg-expense/10' : 'text-text-tertiary hover:text-expense',
+                        )}
+                      >
+                        <ThumbsDown size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+
+        {/* 异常支出提醒 */}
+        {r.anomalies.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-expense/10 flex items-center justify-center">
+                  <AlertTriangle size={18} className="text-expense" />
+                </div>
+                <CardTitle className="text-base">异常支出提醒</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {r.anomalies.map((anomaly, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-3 p-3 rounded-lg bg-expense/5 border border-expense/10"
+                >
+                  <div className="w-2 h-2 rounded-full bg-expense shrink-0" />
+                  <span className="text-sm text-text-primary flex-1">{anomaly.description}</span>
+                  <span className="text-sm font-semibold text-expense tabular-nums">
+                    {formatCurrency(anomaly.amount)}
+                  </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+      </>
+    );
+  };
+
   return (
     <div className="page-container">
       {/* 标题栏 */}
@@ -168,7 +368,8 @@ export function MonthlyReportPage() {
         <div>
           <h1 className="text-2xl font-bold text-text-primary">AI财务洞察月报</h1>
           <p className="text-text-secondary mt-1">
-            {displayYear}年{MONTH_NAMES[displayMonth - 1]}财务报告 · AI生成于 {formatDate(report.generatedAt, 'MM-dd HH:mm')}
+            {displayYear}年{MONTH_NAMES[displayMonth - 1]}财务报告
+            {report ? ` · AI生成于 ${formatDate(report.generatedAt, 'MM-dd HH:mm')}` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -181,169 +382,41 @@ export function MonthlyReportPage() {
           <Button variant="outline" size="icon" onClick={handleNextMonth}>
             <ChevronRight size={16} />
           </Button>
-          <Button variant="outline" size="sm">
-            <Download size={14} />
-            导出
-          </Button>
+          {report && (
+            <Button variant="outline" size="sm">
+              <Download size={14} />
+              导出
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* KPI 卡片 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        {kpiCards.map((kpi) => {
-          const Icon = kpi.icon;
-          return (
-            <Card key={kpi.label} className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm text-text-secondary">{kpi.label}</span>
-                <div className={`w-10 h-10 rounded-lg ${kpi.bgColor} flex items-center justify-center`}>
-                  <Icon size={20} className={kpi.color} />
-                </div>
-              </div>
-              <p className={`text-2xl font-bold ${kpi.color} tabular-nums`}>
-                {formatCurrency(kpi.value)}
-              </p>
-              {kpi.change && (
-                <div className="flex items-center gap-1 mt-2">
-                  {kpi.change.isUp ? (
-                    <TrendingUp size={12} className="text-income" />
-                  ) : (
-                    <TrendingDown size={12} className="text-expense" />
-                  )}
-                  <span className={cn(
-                    'text-xs font-medium',
-                    kpi.change.isUp ? 'text-income' : 'text-expense',
-                  )}>
-                    环比{kpi.change.isUp ? '增加' : '减少'} {formatCurrency(kpi.change.value)} ({formatPercentage(kpi.change.percent)})
-                  </span>
-                </div>
-              )}
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* 收支分类对比图 */}
-      <Card className="mb-6">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">收支分类对比</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <BarChart
-            xLabels={report.categoryBreakdown.map((c) => c.categoryName)}
-            series={[
-              {
-                name: '本月',
-                data: report.categoryBreakdown.map((c) => c.amount),
-                color: '#3B82F6',
-              },
-              {
-                name: '上月',
-                data: report.categoryBreakdown.map((c) => c.previousMonthAmount || 0),
-                color: '#94A3B8',
-              },
-            ]}
-            height={isMobile ? 280 : 320}
-            showLegend
-          />
-        </CardContent>
-      </Card>
-
-      {/* AI建议列表 */}
-      <Card className="mb-6">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Sparkles size={18} className="text-primary" />
-            </div>
-            <div>
-              <CardTitle className="text-base">AI智能建议</CardTitle>
-              <p className="text-xs text-text-tertiary mt-0.5">基于本月数据分析生成</p>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {report.advice.map((advice) => {
-            const Icon = ADVICE_ICON[advice.category];
-            const feedback = adviceFeedback[advice.id];
-            return (
-              <div
-                key={advice.id}
-                className="flex gap-3 p-4 rounded-xl border border-border hover:border-primary-200 transition-colors"
-              >
-                {/* 图标 */}
-                <div className={`w-9 h-9 rounded-lg ${ADVICE_BG[advice.category]} flex items-center justify-center shrink-0`}>
-                  <Icon size={18} className={ADVICE_COLOR[advice.category]} />
-                </div>
-
-                {/* 内容 */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <h4 className="text-sm font-semibold text-text-primary">{advice.title}</h4>
-                    {advice.actionUrl && (
-                      <Button variant="ghost" size="sm" className="text-primary text-xs shrink-0" asChild>
-                        <a href={advice.actionUrl}>查看</a>
-                      </Button>
-                    )}
-                  </div>
-                  <p className="text-sm text-text-secondary leading-relaxed">{advice.content}</p>
-
-                  {/* 反馈按钮 */}
-                  <div className="flex items-center gap-2 mt-3">
-                    <span className="text-xs text-text-tertiary">这条建议有帮助吗？</span>
-                    <button
-                      onClick={() => handleFeedback(advice.id, true)}
-                      className={cn(
-                        'p-1 rounded transition-colors',
-                        feedback === true ? 'text-income bg-income/10' : 'text-text-tertiary hover:text-income',
-                      )}
-                    >
-                      <ThumbsUp size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleFeedback(advice.id, false)}
-                      className={cn(
-                        'p-1 rounded transition-colors',
-                        feedback === false ? 'text-expense bg-expense/10' : 'text-text-tertiary hover:text-expense',
-                      )}
-                    >
-                      <ThumbsDown size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      {/* 异常支出提醒 */}
-      {report.anomalies.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
+      {/* 空状态：本月暂无月报（后端 3004）→ 引导生成 */}
+      {isReportError ? (
+        <Card className="mt-10">
+          <CardHeader>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-expense/10 flex items-center justify-center">
-                <AlertTriangle size={18} className="text-expense" />
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Sparkles size={18} className="text-primary" />
               </div>
-              <CardTitle className="text-base">异常支出提醒</CardTitle>
+              <CardTitle className="text-base">本月暂无月报</CardTitle>
             </div>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {report.anomalies.map((anomaly, idx) => (
-              <div
-                key={idx}
-                className="flex items-center gap-3 p-3 rounded-lg bg-expense/5 border border-expense/10"
-              >
-                <div className="w-2 h-2 rounded-full bg-expense shrink-0" />
-                <span className="text-sm text-text-primary flex-1">{anomaly.description}</span>
-                <span className="text-sm font-semibold text-expense tabular-nums">
-                  {formatCurrency(anomaly.amount)}
-                </span>
-              </div>
-            ))}
+          <CardContent className="space-y-4">
+            <p className="text-text-secondary">
+              {reportError?.message || '该月还没有生成月报，点击下方按钮基于本月真实交易数据生成。'}
+            </p>
+            <Button
+              onClick={() => generateMutation.mutate()}
+              disabled={generateMutation.isPending}
+            >
+              {generateMutation.isPending ? '生成中...' : '生成月报'}
+            </Button>
           </CardContent>
         </Card>
-      )}
+      ) : report ? (
+        renderReportContent(report)
+      ) : null}
     </div>
   );
 }

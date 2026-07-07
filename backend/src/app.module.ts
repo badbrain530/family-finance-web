@@ -27,6 +27,7 @@ import { BudgetsModule } from './modules/budgets/budgets.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { WishGoalsModule } from './modules/wish-goals/wish-goals.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 // 全局JWT认证守卫
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
@@ -84,6 +85,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     NotificationsModule,
     WishGoalsModule,
     DashboardModule,
+    ReportsModule,
   ],
   controllers: [HealthController],
   providers: [
