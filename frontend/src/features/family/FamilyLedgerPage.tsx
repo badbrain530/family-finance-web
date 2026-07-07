@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Users,
   UserPlus,
@@ -43,25 +44,35 @@ const ROLE_CONFIG: Record<MemberRole, { label: string; icon: typeof Crown; color
   [MemberRole.VIEWER]: { label: '访客', icon: Eye, color: 'text-text-tertiary' },
 };
 
-// 模拟成员数据
-const mockMembers = [
-  { id: 'u1', nickname: '我', role: MemberRole.OWNER, avatar: null, expense: 8200, income: 18500, txCount: 45, isOnline: true },
-  { id: 'u2', nickname: '伴侣', role: MemberRole.ADMIN, avatar: null, expense: 4180.5, income: 0, txCount: 28, isOnline: true },
-  { id: 'u3', nickname: '妈妈', role: MemberRole.MEMBER, avatar: null, expense: 0, income: 0, txCount: 0, isOnline: false },
-];
-
-// 模拟共享交易数据
-const mockSharedTransactions: Transaction[] = [
-  { id: '1', ledgerId: 'l1', userId: 'u1', categoryId: 'c1', type: 'expense' as TransactionType, amount: 35.5, date: '2026-07-04T12:30:00Z', merchant: '美团外卖', note: '午餐', source: 'quick_record' as any, importRecordId: null, aiConfidence: 0.92, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c1', name: '在外就餐', color: '#FF5252', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u1', nickname: '我', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
-  { id: '2', ledgerId: 'l1', userId: 'u1', categoryId: 'c2', type: 'income' as TransactionType, amount: 18500, date: '2026-07-01T09:00:00Z', merchant: '公司', note: '7月工资', source: 'manual' as any, importRecordId: null, aiConfidence: null, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c2', name: '基本工资', color: '#00C896', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u1', nickname: '我', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
-  { id: '3', ledgerId: 'l1', userId: 'u2', categoryId: 'c3', type: 'expense' as TransactionType, amount: 1280, date: '2026-07-03T18:00:00Z', merchant: '华润万家', note: '周末采购', source: 'manual' as any, importRecordId: null, aiConfidence: 0.88, aiCorrected: false, isLargeExpense: true, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c3', name: '米面粮油', color: '#FF6B6B', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u2', nickname: '伴侣', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
-  { id: '4', ledgerId: 'l1', userId: 'u2', categoryId: 'c4', type: 'expense' as TransactionType, amount: 120, date: '2026-07-02T20:00:00Z', merchant: '万达影院', note: '看电影', source: 'manual' as any, importRecordId: null, aiConfidence: 0.9, aiCorrected: true, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c4', name: '文化娱乐', color: '#C48EC4', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u2', nickname: '伴侣', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
-];
-
 export function FamilyLedgerPage() {
   const { user } = useAuthStore();
   const { toast } = useToast();
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+
+  // TanStack Query 获取家庭数据
+  const { data: familyData } = useQuery({
+    queryKey: ['family'],
+    queryFn: async () => {
+      // TODO: 接入真实 API
+      return { members: [], transactions: [] };
+    },
+  });
+
+  // 暂用常量（后续移除）
+  const mockMembers = [
+    { id: 'u1', nickname: '我', role: MemberRole.OWNER, avatar: null, expense: 8200, income: 18500, txCount: 45, isOnline: true },
+    { id: 'u2', nickname: '伴侣', role: MemberRole.ADMIN, avatar: null, expense: 4180.5, income: 0, txCount: 28, isOnline: true },
+    { id: 'u3', nickname: '妈妈', role: MemberRole.MEMBER, avatar: null, expense: 0, income: 0, txCount: 0, isOnline: false },
+  ];
+  const mockSharedTransactions: Transaction[] = [
+    { id: '1', ledgerId: 'l1', userId: 'u1', categoryId: 'c1', type: 'expense' as TransactionType, amount: 35.5, date: '2026-07-04T12:30:00Z', merchant: '美团外卖', note: '午餐', source: 'quick_record' as any, importRecordId: null, aiConfidence: 0.92, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c1', name: '在外就餐', color: '#FF5252', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u1', nickname: '我', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
+    { id: '2', ledgerId: 'l1', userId: 'u1', categoryId: 'c2', type: 'income' as TransactionType, amount: 18500, date: '2026-07-01T09:00:00Z', merchant: '公司', note: '7月工资', source: 'manual' as any, importRecordId: null, aiConfidence: null, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c2', name: '基本工资', color: '#00C896', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u1', nickname: '我', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
+    { id: '3', ledgerId: 'l1', userId: 'u2', categoryId: 'c3', type: 'expense' as TransactionType, amount: 1280, date: '2026-07-03T18:00:00Z', merchant: '华润万家', note: '周末采购', source: 'manual' as any, importRecordId: null, aiConfidence: 0.88, aiCorrected: false, isLargeExpense: true, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c3', name: '米面粮油', color: '#FF6B6B', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u2', nickname: '伴侣', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
+    { id: '4', ledgerId: 'l1', userId: 'u2', categoryId: 'c4', type: 'expense' as TransactionType, amount: 120, date: '2026-07-02T20:00:00Z', merchant: '万达影院', note: '看电影', source: 'manual' as any, importRecordId: null, aiConfidence: 0.9, aiCorrected: true, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c4', name: '文化娱乐', color: '#C48EC4', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u2', nickname: '伴侣', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
+  ];
+
+  const members = familyData?.members || mockMembers;
+  const sharedTransactions = familyData?.transactions || mockSharedTransactions;
 
   const handleCopyInvite = async () => {
     const success = await copyToClipboard('8KQ2X9');
@@ -75,9 +86,9 @@ export function FamilyLedgerPage() {
   };
 
   // 汇总
-  const totalExpense = mockMembers.reduce((sum, m) => sum + m.expense, 0);
-  const totalIncome = mockMembers.reduce((sum, m) => sum + m.income, 0);
-  const onlineCount = mockMembers.filter((m) => m.isOnline).length;
+  const totalExpense = members.reduce((sum: number, m: any) => sum + m.expense, 0);
+  const totalIncome = members.reduce((sum: number, m: any) => sum + m.income, 0);
+  const onlineCount = members.filter((m: any) => m.isOnline).length;
 
   return (
     <div className="page-container">
@@ -86,7 +97,7 @@ export function FamilyLedgerPage() {
         <div>
           <h1 className="text-2xl font-bold text-text-primary">家庭协同</h1>
           <p className="text-text-secondary mt-1">
-            {onlineCount} 人在线 · 共 {mockMembers.length} 位成员
+            {onlineCount} 人在线 · 共 {members.length} 位成员
           </p>
         </div>
         <Button onClick={() => setInviteDialogOpen(true)}>
@@ -134,8 +145,8 @@ export function FamilyLedgerPage() {
 
       {/* 成员卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        {mockMembers.map((member) => {
-          const roleConfig = ROLE_CONFIG[member.role];
+        {members.map((member: any) => {
+          const roleConfig = ROLE_CONFIG[member.role as MemberRole];
           const RoleIcon = roleConfig.icon;
           return (
             <Card key={member.id} className="p-5">
@@ -199,7 +210,7 @@ export function FamilyLedgerPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockSharedTransactions.map((tx) => (
+              {sharedTransactions.map((tx: any) => (
                 <TableRow key={tx.id} className="cursor-pointer">
                   <TableCell className="text-text-secondary whitespace-nowrap text-sm">
                     {formatDate(tx.date, 'MM-dd HH:mm')}

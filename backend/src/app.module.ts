@@ -15,6 +15,7 @@ import { FamiliesModule } from './modules/families/families.module';
 import { LedgersModule } from './modules/ledgers/ledgers.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
+import { AccountsModule } from './modules/accounts/accounts.module';
 import { WebsocketModule } from './modules/websocket/websocket.module';
 
 // T04 业务模块
@@ -71,6 +72,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     LedgersModule,
     CategoriesModule,
     TransactionsModule,
+    AccountsModule,
     WebsocketModule,
 
     // ===== T04 业务模块 =====

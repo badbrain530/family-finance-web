@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
  * 快捷记账DTO（Ctrl+K 自然语言记账）
@@ -15,6 +15,11 @@ export class QuickRecordDto {
   @IsNotEmpty({ message: '账本ID不能为空' })
   @IsString()
   readonly ledgerId: string;
+
+  /** 关联账户ID（前端快捷记账强制选择，用于账户流水与余额统计） */
+  @IsOptional()
+  @IsString()
+  readonly accountId?: string;
 }
 
 /**

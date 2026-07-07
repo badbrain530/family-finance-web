@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -27,62 +28,16 @@ import { LineChart } from '@/components/charts/LineChart';
 import { PieChart } from '@/components/charts/PieChart';
 import { AmountText } from '@/components/common/AmountText';
 import { CategoryTag } from '@/components/common/CategoryTag';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useIsMobile } from '@/hooks/useMediaQuery';
-import type { DashboardData } from '@/types/report';
-import type { Transaction, TransactionType } from '@/types/transaction';
+import { getDashboardData } from '@/services/dashboard.service';
+import type { Transaction } from '@/types/transaction';
 
 /**
  * 仪表盘主页面（W-02, P0）
  * 包含：4个KPI卡片、收支趋势折线图、分类支出饼图、
  * 最近交易列表、预算执行概览
  */
-
-// 模拟数据（后续接入真实API替换）
-const mockDashboardData: DashboardData = {
-  summary: {
-    totalIncome: 18500,
-    totalExpense: 12380.5,
-    balance: 6119.5,
-    previousBalance: 5200,
-    balanceTrend: 'up',
-  },
-  budgetProgress: {
-    totalBudget: 15000,
-    totalSpent: 12380.5,
-    percentage: 82.5,
-    remaining: 2619.5,
-  },
-  recentTransactions: [
-    { id: '1', ledgerId: 'l1', userId: 'u1', categoryId: 'c1', type: 'expense' as TransactionType, amount: 35.5, date: '2026-07-04T12:30:00Z', merchant: '美团外卖', note: '午餐', source: 'quick_record' as any, importRecordId: null, aiConfidence: 0.92, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c1', name: '在外就餐', color: '#FF5252', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' } },
-    { id: '2', ledgerId: 'l1', userId: 'u1', categoryId: 'c2', type: 'income' as TransactionType, amount: 18500, date: '2026-07-01T09:00:00Z', merchant: '公司', note: '7月工资', source: 'manual' as any, importRecordId: null, aiConfidence: null, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c2', name: '基本工资', color: '#00C896', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' } },
-    { id: '3', ledgerId: 'l1', userId: 'u1', categoryId: 'c3', type: 'expense' as TransactionType, amount: 1280, date: '2026-07-03T18:00:00Z', merchant: '华润万家', note: '周末采购', source: 'manual' as any, importRecordId: null, aiConfidence: 0.88, aiCorrected: false, isLargeExpense: true, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c3', name: '米面粮油', color: '#FF6B6B', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' } },
-    { id: '4', ledgerId: 'l1', userId: 'u1', categoryId: 'c4', type: 'expense' as TransactionType, amount: 45, date: '2026-07-03T08:00:00Z', merchant: '滴滴出行', note: '打车上班', source: 'quick_record' as any, importRecordId: null, aiConfidence: 0.95, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c4', name: '出租车/网约车', color: '#FDD663', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' } },
-    { id: '5', ledgerId: 'l1', userId: 'u1', categoryId: 'c5', type: 'expense' as TransactionType, amount: 120, date: '2026-07-02T20:00:00Z', merchant: '万达影院', note: '看电影', source: 'manual' as any, importRecordId: null, aiConfidence: 0.9, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c5', name: '文化娱乐', color: '#C48EC4', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' } },
-  ],
-  monthlyTrend: [
-    { month: '2月', income: 17500, expense: 11200 },
-    { month: '3月', income: 18200, expense: 13500 },
-    { month: '4月', income: 18500, expense: 10800 },
-    { month: '5月', income: 18500, expense: 14200 },
-    { month: '6月', income: 19000, expense: 11800 },
-    { month: '7月', income: 18500, expense: 12380.5 },
-  ],
-  categoryBreakdown: [
-    { categoryId: 'c1', name: '食品烟酒', amount: 4200, color: '#FF6B6B' },
-    { categoryId: 'c2', name: '居住', amount: 3500, color: '#45B7D1' },
-    { categoryId: 'c3', name: '交通通信', amount: 1800, color: '#FFEAA7' },
-    { categoryId: 'c4', name: '教育文化', amount: 1500, color: '#DDA0DD' },
-    { categoryId: 'c5', name: '生活用品', amount: 980, color: '#96CEB4' },
-    { categoryId: 'c6', name: '其他', amount: 400.5, color: '#A8A8A8' },
-  ],
-  wishGoals: [
-    { id: 'w1', name: '日本旅行基金', current: 8500, target: 15000, percentage: 56.7 },
-  ],
-  memberContribution: [
-    { userId: 'u1', nickname: '我', expense: 8200, count: 45 },
-    { userId: 'u2', nickname: '伴侣', expense: 4180.5, count: 28 },
-  ],
-};
 
 export function DashboardPage() {
   const { user } = useAuthStore();
@@ -92,7 +47,29 @@ export function DashboardPage() {
   const [displayYear, setDisplayYear] = useState(year);
   const [displayMonth, setDisplayMonth] = useState(month);
 
-  const data = mockDashboardData;
+  // 使用 TanStack Query 获取仪表盘数据
+  const familyId = user?.id || '';
+  const { data: dashboardData, isLoading } = useQuery({
+    queryKey: ['dashboard', familyId, displayYear, displayMonth],
+    queryFn: () => getDashboardData(familyId, displayYear, displayMonth),
+    enabled: !!familyId,
+  });
+
+  // Loading 状态
+  if (isLoading) {
+    return <LoadingSpinner fullScreen />;
+  }
+
+  // API 不可用时使用空数据渲染（不崩溃）
+  const data = dashboardData || {
+    summary: { totalIncome: 0, totalExpense: 0, balance: 0, previousBalance: 0, balanceTrend: 'flat' as const },
+    budgetProgress: { totalBudget: 0, totalSpent: 0, percentage: 0, remaining: 0 },
+    recentTransactions: [],
+    monthlyTrend: [],
+    categoryBreakdown: [],
+    wishGoals: [],
+    memberContribution: [],
+  };
 
   // KPI卡片数据
   const kpiCards = useMemo(() => {

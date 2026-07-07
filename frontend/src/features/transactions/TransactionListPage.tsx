@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
-import { Search, Filter, Download, ChevronLeft, ChevronRight, ArrowLeftRight } from 'lucide-react';
+import { useState, useMemo, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Search, Filter, Download, ChevronLeft, ChevronRight, ArrowLeftRight, Pencil } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,29 +25,23 @@ import { CategoryTag } from '@/components/common/CategoryTag';
 import { BatchOperations } from '@/components/common/BatchOperations';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { EmptyState } from '@/components/common/EmptyState';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useUIStore } from '@/store/uiStore';
+import { useAuthStore } from '@/store/authStore';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { DEFAULT_EXPENSE_CATEGORIES } from '@/lib/categories';
-import type { Transaction, TransactionType } from '@/types/transaction';
+import { getTransactions, batchDeleteTransactions } from '@/services/transaction.service';
+import { EditTransactionModal } from './EditTransactionModal';
+import type { Transaction } from '@/types/transaction';
 
 /**
  * 交易列表页面
- * 包含：筛选栏（日期/分类/成员/金额）、表格、批量选择（W-03）、分页
+ * 包含：筛选栏（日期/分类/成员/金额）、表格、批量选择、编辑弹窗、分页
  */
-
-// 模拟交易数据
-const mockTransactions: Transaction[] = [
-  { id: '1', ledgerId: 'l1', userId: 'u1', categoryId: 'c1', type: 'expense' as TransactionType, amount: 35.5, date: '2026-07-04T12:30:00Z', merchant: '美团外卖', note: '午餐', source: 'quick_record' as any, importRecordId: null, aiConfidence: 0.92, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c1', name: '在外就餐', color: '#FF5252', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u1', nickname: '我', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
-  { id: '2', ledgerId: 'l1', userId: 'u1', categoryId: 'c2', type: 'income' as TransactionType, amount: 18500, date: '2026-07-01T09:00:00Z', merchant: '公司', note: '7月工资', source: 'manual' as any, importRecordId: null, aiConfidence: null, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c2', name: '基本工资', color: '#00C896', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u1', nickname: '我', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
-  { id: '3', ledgerId: 'l1', userId: 'u2', categoryId: 'c3', type: 'expense' as TransactionType, amount: 1280, date: '2026-07-03T18:00:00Z', merchant: '华润万家', note: '周末采购', source: 'manual' as any, importRecordId: null, aiConfidence: 0.88, aiCorrected: false, isLargeExpense: true, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c3', name: '米面粮油', color: '#FF6B6B', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u2', nickname: '伴侣', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
-  { id: '4', ledgerId: 'l1', userId: 'u1', categoryId: 'c4', type: 'expense' as TransactionType, amount: 45, date: '2026-07-03T08:00:00Z', merchant: '滴滴出行', note: '打车上班', source: 'quick_record' as any, importRecordId: null, aiConfidence: 0.95, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c4', name: '出租车/网约车', color: '#FDD663', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u1', nickname: '我', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
-  { id: '5', ledgerId: 'l1', userId: 'u2', categoryId: 'c5', type: 'expense' as TransactionType, amount: 120, date: '2026-07-02T20:00:00Z', merchant: '万达影院', note: '看电影', source: 'manual' as any, importRecordId: null, aiConfidence: 0.9, aiCorrected: true, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c5', name: '文化娱乐', color: '#C48EC4', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u2', nickname: '伴侣', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
-  { id: '6', ledgerId: 'l1', userId: 'u1', categoryId: 'c6', type: 'expense' as TransactionType, amount: 88, date: '2026-07-02T12:00:00Z', merchant: '肯德基', note: '午餐', source: 'quick_record' as any, importRecordId: null, aiConfidence: 0.87, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c6', name: '在外就餐', color: '#FF5252', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u1', nickname: '我', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
-  { id: '7', ledgerId: 'l1', userId: 'u1', categoryId: 'c7', type: 'expense' as TransactionType, amount: 320, date: '2026-07-01T10:00:00Z', merchant: '中国电信', note: '宽带续费', source: 'manual' as any, importRecordId: null, aiConfidence: 0.93, aiCorrected: false, isLargeExpense: false, createdAt: '', updatedAt: '', currency: 'CNY', metadata: null, tags: [], category: { id: 'c7', name: '通讯费', color: '#FFE066', familyId: '', parentId: null, icon: '', sortOrder: 0, isSystem: true, createdAt: '' }, user: { id: 'u1', nickname: '我', phone: null, email: null, wechatOpenId: null, avatar: null, createdAt: '', updatedAt: '' } },
-];
-
 export function TransactionListPage() {
+  const queryClient = useQueryClient();
   const { setQuickRecordOpen } = useUIStore();
+  const { user } = useAuthStore();
 
   // 筛选状态
   const [keyword, setKeyword] = useState('');
@@ -62,8 +57,25 @@ export function TransactionListPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // 模拟数据
-  const allTransactions = mockTransactions;
+  // 编辑弹窗状态
+  const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+
+  // TanStack Query：获取交易列表
+  const { data: queryResult, isLoading, isError, error } = useQuery({
+    queryKey: ['transactions', page],
+    queryFn: () => getTransactions({ page, pageSize }),
+  });
+
+  // 批量删除
+  const batchDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => batchDeleteTransactions(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+
+  const allTransactions = queryResult?.items || [];
 
   // 过滤交易
   const filteredTransactions = useMemo(() => {
@@ -87,7 +99,7 @@ export function TransactionListPage() {
     });
   }, [allTransactions, keyword, filterCategory, filterMember, filterType]);
 
-  // 分页数据
+  // 分页数据（基于过滤后的数据前端分页）
   const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
   const pagedTransactions = filteredTransactions.slice(
     (page - 1) * pageSize,
@@ -99,12 +111,10 @@ export function TransactionListPage() {
 
   const handleSelectAll = () => {
     if (isAllSelected) {
-      // 取消当前页全选
       const newSet = new Set(selectedIds);
       pagedTransactions.forEach((tx) => newSet.delete(tx.id));
       setSelectedIds(newSet);
     } else {
-      // 选中当前页全部
       const newSet = new Set(selectedIds);
       pagedTransactions.forEach((tx) => newSet.add(tx.id));
       setSelectedIds(newSet);
@@ -128,13 +138,25 @@ export function TransactionListPage() {
   };
 
   const handleConfirmDelete = () => {
-    // 实际调用API删除
+    batchDeleteMutation.mutate(Array.from(selectedIds));
     setSelectedIds(new Set());
+    setShowDeleteConfirm(false);
   };
 
   const handleBatchClassify = () => {
-    // 打开分类选择弹窗
+    // 打开分类选择弹窗（后续实现）
   };
+
+  // 打开编辑弹窗
+  const handleEdit = (tx: Transaction) => {
+    setEditTransaction(tx);
+    setEditDialogOpen(true);
+  };
+
+  // 编辑完成后刷新列表
+  const handleEditSaved = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['transactions'] });
+  }, [queryClient]);
 
   // 汇总信息
   const totalExpense = filteredTransactions
@@ -143,6 +165,24 @@ export function TransactionListPage() {
   const totalIncome = filteredTransactions
     .filter((tx) => tx.type === 'income')
     .reduce((sum, tx) => sum + tx.amount, 0);
+
+  if (isLoading) {
+    return <LoadingSpinner fullScreen />;
+  }
+
+  if (isError) {
+    return (
+      <div className="page-container">
+        <div className="flex flex-col items-center justify-center min-h-[40vh]">
+          <p className="text-expense font-medium text-lg">加载交易数据失败</p>
+          <p className="text-text-secondary mt-2">{(error as Error)?.message || '请检查网络连接'}</p>
+          <Button className="mt-4" onClick={() => queryClient.invalidateQueries({ queryKey: ['transactions'] })}>
+            重试
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-container">
@@ -204,8 +244,7 @@ export function TransactionListPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部成员</SelectItem>
-              <SelectItem value="u1">我</SelectItem>
-              <SelectItem value="u2">伴侣</SelectItem>
+              <SelectItem value={user?.id || 'u1'}>{user?.nickname || '我'}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -295,6 +334,7 @@ export function TransactionListPage() {
                 <TableHead>成员</TableHead>
                 <TableHead className="text-right">金额</TableHead>
                 <TableHead>来源</TableHead>
+                <TableHead className="w-16">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -304,7 +344,7 @@ export function TransactionListPage() {
                   data-state={selectedIds.has(tx.id) ? 'selected' : undefined}
                   className="cursor-pointer"
                 >
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedIds.has(tx.id)}
@@ -312,10 +352,13 @@ export function TransactionListPage() {
                       className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
                     />
                   </TableCell>
-                  <TableCell className="text-text-secondary whitespace-nowrap">
+                  <TableCell
+                    className="text-text-secondary whitespace-nowrap"
+                    onClick={() => handleEdit(tx)}
+                  >
                     {formatDate(tx.date, 'MM-dd HH:mm')}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={() => handleEdit(tx)}>
                     <div className="flex items-center gap-2">
                       <div>
                         <div className="text-sm font-medium text-text-primary">
@@ -333,19 +376,38 @@ export function TransactionListPage() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={() => handleEdit(tx)}>
                     <CategoryTag category={tx.category} />
                   </TableCell>
-                  <TableCell className="text-text-secondary">
+                  <TableCell
+                    className="text-text-secondary"
+                    onClick={() => handleEdit(tx)}
+                  >
                     {tx.user?.nickname || '未知'}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell
+                    className="text-right"
+                    onClick={() => handleEdit(tx)}
+                  >
                     <AmountText amount={tx.amount} type={tx.type} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={() => handleEdit(tx)}>
                     <Badge variant={tx.source === 'quick_record' ? 'default' : 'outline'} className="text-xs">
                       {tx.source === 'quick_record' ? '快捷' : tx.source === 'import' ? '导入' : '手动'}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEdit(tx);
+                      }}
+                      className="text-text-secondary hover:text-primary"
+                    >
+                      <Pencil size={14} />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -396,6 +458,14 @@ export function TransactionListPage() {
         confirmText="确认删除"
         variant="destructive"
         onConfirm={handleConfirmDelete}
+      />
+
+      {/* 编辑交易弹窗 */}
+      <EditTransactionModal
+        transaction={editTransaction}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        onSaved={handleEditSaved}
       />
     </div>
   );

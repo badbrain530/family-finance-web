@@ -18,9 +18,11 @@ export const ROUTES = {
   REGISTER: '/register',
   DASHBOARD: '/dashboard',
   TRANSACTIONS: '/transactions',
+  ACCOUNTS: '/accounts',
   IMPORT: '/import',
   FAMILY: '/family',
   BUDGET: '/budget',
+  CATEGORIES: '/categories',
   REPORTS: '/reports',
   NOTIFICATIONS: '/notifications',
   SETTINGS: '/settings',
@@ -30,9 +32,11 @@ export const ROUTES = {
 export const NAV_ITEMS = [
   { path: ROUTES.DASHBOARD, label: '仪表盘', icon: 'LayoutDashboard' },
   { path: ROUTES.TRANSACTIONS, label: '交易管理', icon: 'ArrowLeftRight' },
+  { path: ROUTES.ACCOUNTS, label: '账户', icon: 'Wallet' },
   { path: ROUTES.IMPORT, label: '账单导入', icon: 'Upload' },
   { path: ROUTES.FAMILY, label: '家庭协同', icon: 'Users' },
-  { path: ROUTES.BUDGET, label: '预算管理', icon: 'Wallet' },
+  { path: ROUTES.BUDGET, label: '预算管理', icon: 'PiggyBank' },
+  { path: ROUTES.CATEGORIES, label: '分类', icon: 'Tags' },
   { path: ROUTES.REPORTS, label: '财务月报', icon: 'FileText' },
   { path: ROUTES.NOTIFICATIONS, label: '通知中心', icon: 'Bell' },
   { path: ROUTES.SETTINGS, label: '设置', icon: 'Settings' },
@@ -89,3 +93,32 @@ export const MONTH_NAMES = [
   '一月', '二月', '三月', '四月', '五月', '六月',
   '七月', '八月', '九月', '十月', '十一月', '十二月',
 ] as const;
+
+// ==================== 账户类型元数据（唯一映射源） ====================
+import { AccountType } from '@/types/account';
+
+/**
+ * 账户类型 ↔ 中文名/图标/颜色 统一映射
+ * icon 为 lucide-react 图标名，前端在组件内映射为具体组件
+ */
+export const ACCOUNT_TYPE_META: Record<
+  AccountType,
+  { label: string; icon: string; color: string }
+> = {
+  DEBIT: { label: '储蓄卡', icon: 'CreditCard', color: '#00C896' },
+  CREDIT: { label: '信用卡', icon: 'CreditCard', color: '#F59E0B' },
+  INVESTMENT: { label: '投资', icon: 'TrendingUp', color: '#6366F1' },
+  CASH: { label: '现金', icon: 'Banknote', color: '#10B981' },
+  E_WALLET: { label: '钱包', icon: 'Wallet', color: '#3B82F6' },
+  VIRTUAL: { label: '虚拟', icon: 'Sparkles', color: '#A855F7' },
+};
+
+/** 账户类型顺序（用于分组展示） */
+export const ACCOUNT_TYPE_ORDER: AccountType[] = [
+  AccountType.DEBIT,
+  AccountType.CREDIT,
+  AccountType.INVESTMENT,
+  AccountType.CASH,
+  AccountType.E_WALLET,
+  AccountType.VIRTUAL,
+];

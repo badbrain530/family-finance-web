@@ -35,6 +35,15 @@ const MonthlyReportPage = lazy(() => import('@/features/report/MonthlyReportPage
 // 设置
 const SettingsPage = lazy(() => import('@/features/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
 
+// 账户总览
+const AccountsPage = lazy(() => import('@/features/accounts/AccountsPage').then(m => ({ default: m.AccountsPage })));
+
+// 分类管理
+const CategoriesManagePage = lazy(() => import('@/features/categories/CategoriesManagePage').then(m => ({ default: m.CategoriesManagePage })));
+
+// 通知中心
+const NotificationsPage = lazy(() => import('@/features/notifications/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
+
 /**
  * 受保护路由包装器
  * 未登录用户重定向到登录页
@@ -64,29 +73,17 @@ function AuthRoute({ children }: { children: ReactNode }) {
 }
 
 /**
- * 通知中心占位页面（后续迭代实现）
- */
-function NotificationsPlaceholder() {
-  return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-text-primary mb-2">通知中心</h2>
-        <p className="text-text-secondary">该页面将在后续迭代中实现</p>
-      </div>
-    </div>
-  );
-}
-
-/**
  * 应用根组件 - 路由配置
  * 路由结构按架构文档定义：
  * - /login, /register - 认证页面（无需登录）
  * - /onboarding - 新用户引导（需要登录）
  * - /dashboard - 仪表盘
  * - /transactions - 交易管理
+ * - /accounts - 账户总览
  * - /import - 账单导入
  * - /family - 家庭协同
  * - /budget - 预算管理
+ * - /categories - 分类管理
  * - /reports - AI财务洞察月报
  * - /notifications - 通知中心
  * - /settings - 设置
@@ -115,11 +112,13 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="transactions" element={<TransactionListPage />} />
+          <Route path="accounts" element={<AccountsPage />} />
           <Route path="import" element={<ImportPage />} />
           <Route path="family" element={<FamilyLedgerPage />} />
           <Route path="budget" element={<BudgetPage />} />
+          <Route path="categories" element={<CategoriesManagePage />} />
           <Route path="reports" element={<MonthlyReportPage />} />
-          <Route path="notifications" element={<NotificationsPlaceholder />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 

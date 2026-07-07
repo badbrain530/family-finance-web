@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Wallet,
   Target,
@@ -19,31 +20,42 @@ import { MONTH_NAMES } from '@/lib/constants';
  * 3个KPI + 分类预算进度条 + 心愿目标
  */
 
-// 模拟分类预算数据
-const mockCategoryBudgets = [
-  { categoryId: 'c1', categoryName: '食品烟酒', categoryColor: '#FF6B6B', budget: 5000, spent: 4200, percentage: 84 },
-  { categoryId: 'c2', categoryName: '居住', categoryColor: '#45B7D1', budget: 4000, spent: 3500, percentage: 87.5 },
-  { categoryId: 'c3', categoryName: '交通通信', categoryColor: '#FFEAA7', budget: 2000, spent: 1800, percentage: 90 },
-  { categoryId: 'c4', categoryName: '教育文化', categoryColor: '#DDA0DD', budget: 1500, spent: 1500, percentage: 100 },
-  { categoryId: 'c5', categoryName: '生活用品', categoryColor: '#96CEB4', budget: 1000, spent: 980, percentage: 98 },
-  { categoryId: 'c6', categoryName: '医疗保健', categoryColor: '#FF8C94', budget: 500, spent: 120, percentage: 24 },
-  { categoryId: 'c7', categoryName: '其他', categoryColor: '#A8A8A8', budget: 1000, spent: 280.5, percentage: 28.05 },
-];
-
-// 模拟心愿目标
-const mockWishGoals = [
-  { id: 'w1', name: '日本旅行基金', current: 8500, target: 15000, percentage: 56.7, targetDate: '2026-10-01', icon: '✈️', color: '#45B7D1' },
-  { id: 'w2', name: '新 MacBook', current: 6200, target: 12000, percentage: 51.7, targetDate: '2026-12-01', icon: '💻', color: '#DDA0DD' },
-  { id: 'w3', name: '家庭应急基金', current: 15000, target: 30000, percentage: 50, targetDate: null, icon: '🛡️', color: '#96CEB4' },
-];
-
 export function BudgetPage() {
   const { year, month } = getCurrentYearMonth();
   const [displayMonth, setDisplayMonth] = useState(month);
 
+  // 使用 TanStack Query 获取预算数据（预留 API 接入）
+  const { data: budgetData } = useQuery({
+    queryKey: ['budgets', displayMonth],
+    queryFn: async () => {
+      // TODO: 接入真实预算 API
+      // return getBudgets(familyId, year, displayMonth);
+      return { categoryBudgets: [], wishGoals: [] };
+    },
+  });
+
+  // 暂用前端常量（后续移除）
+  const mockCategoryBudgets = [
+    { categoryId: 'c1', categoryName: '食品烟酒', categoryColor: '#FF6B6B', budget: 5000, spent: 4200, percentage: 84 },
+    { categoryId: 'c2', categoryName: '居住', categoryColor: '#45B7D1', budget: 4000, spent: 3500, percentage: 87.5 },
+    { categoryId: 'c3', categoryName: '交通通信', categoryColor: '#FFEAA7', budget: 2000, spent: 1800, percentage: 90 },
+    { categoryId: 'c4', categoryName: '教育文化', categoryColor: '#DDA0DD', budget: 1500, spent: 1500, percentage: 100 },
+    { categoryId: 'c5', categoryName: '生活用品', categoryColor: '#96CEB4', budget: 1000, spent: 980, percentage: 98 },
+    { categoryId: 'c6', categoryName: '医疗保健', categoryColor: '#FF8C94', budget: 500, spent: 120, percentage: 24 },
+    { categoryId: 'c7', categoryName: '其他', categoryColor: '#A8A8A8', budget: 1000, spent: 280.5, percentage: 28.05 },
+  ];
+  const mockWishGoals = [
+    { id: 'w1', name: '日本旅行基金', current: 8500, target: 15000, percentage: 56.7, targetDate: '2026-10-01', icon: '✈️', color: '#45B7D1' },
+    { id: 'w2', name: '新 MacBook', current: 6200, target: 12000, percentage: 51.7, targetDate: '2026-12-01', icon: '💻', color: '#DDA0DD' },
+    { id: 'w3', name: '家庭应急基金', current: 15000, target: 30000, percentage: 50, targetDate: null, icon: '🛡️', color: '#96CEB4' },
+  ];
+
+  const categoryBudgets = budgetData?.categoryBudgets || mockCategoryBudgets;
+  const wishGoals = budgetData?.wishGoals || mockWishGoals;
+
   // 总预算汇总
-  const totalBudget = mockCategoryBudgets.reduce((sum, c) => sum + c.budget, 0);
-  const totalSpent = mockCategoryBudgets.reduce((sum, c) => sum + c.spent, 0);
+  const totalBudget = categoryBudgets.reduce((sum: number, c: any) => sum + c.budget, 0);
+  const totalSpent = categoryBudgets.reduce((sum: number, c: any) => sum + c.spent, 0);
   const totalRemaining = totalBudget - totalSpent;
   const overallPercentage = (totalSpent / totalBudget) * 100;
 
@@ -169,7 +181,7 @@ export function BudgetPage() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
-          {mockCategoryBudgets.map((cat) => (
+          {categoryBudgets.map((cat: any) => (
             <div key={cat.categoryId}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -220,7 +232,7 @@ export function BudgetPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {mockWishGoals.map((goal) => (
+            {wishGoals.map((goal: any) => (
               <div
                 key={goal.id}
                 className="p-4 rounded-xl border border-border hover:border-primary-200 transition-colors"

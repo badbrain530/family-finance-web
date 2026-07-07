@@ -18,6 +18,7 @@
     /* 背景 */
     --color-bg: #F8FAFC;
     --color-surface: #FFFFFF;
+    --color-surface-dark: #0F172A;
 
     /* 文本 */
     --color-text-primary: #0F172A;
@@ -26,10 +27,32 @@
 
     /* 边框 */
     --color-border: #E2E8F0;
+    --color-border-dark: #334155;
 
     /* 侧边栏 */
     --sidebar-width: 240px;
     --header-height: 64px;
+  }
+
+  /* ==================== 深色模式变量覆写 ==================== */
+  .dark {
+    /* 收支配色在深色下略提亮以保证对比度 */
+    --color-income: #22C55E;
+    --color-expense: #F87171;
+
+    /* 背景（更深的 slate 色阶，避免刺眼纯黑） */
+    --color-bg: #0F172A;
+    --color-surface: #1E293B;
+    --color-surface-dark: #0B1220;
+
+    /* 文本 */
+    --color-text-primary: #F1F5F9;
+    --color-text-secondary: #94A3B8;
+    --color-text-tertiary: #64748B;
+
+    /* 边框 */
+    --color-border: #334155;
+    --color-border-dark: #475569;
   }
 
   * {
@@ -59,11 +82,12 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-text-tertiary/30 rounded-full;
+    @apply rounded-full;
+    background-color: rgba(148, 163, 184, 0.3);
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-text-tertiary/50;
+    background-color: rgba(148, 163, 184, 0.5);
   }
 }
 

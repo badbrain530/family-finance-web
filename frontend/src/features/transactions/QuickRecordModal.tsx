@@ -15,12 +15,23 @@ import {
   Send,
   Loader2,
   Sparkles,
+  Wallet,
 } from 'lucide-react';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import { useUIStore } from '@/store/uiStore';
 import { useToast } from '@/components/ui/toaster';
 import { quickRecord } from '@/services/transaction.service';
+import { getAccounts } from '@/services/account.service';
+import { getCurrentFamily } from '@/services/family.service';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import { TransactionType } from '@/types/transaction';
+import type { Account } from '@/types/account';
 
 /**
  * 快捷记账浮层 (W-01, P0)
@@ -61,10 +72,24 @@ export function QuickRecordModal() {
   const [showNLHint, setShowNLHint] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 打开时自动聚焦
+  // 账户（强制必选）
+  const [accountId, setAccountId] = useState('');
+  const [accounts, setAccounts] = useState<Account[]>([]);
+
+  // 打开时自动聚焦 + 加载账户
   useEffect(() => {
     if (quickRecordOpen) {
       setTimeout(() => inputRef.current?.focus(), 100);
+      // 加载家庭账户列表（按 familyId 隔离）
+      (async () => {
+        try {
+          const family = await getCurrentFamily();
+          const accs = await getAccounts(family.id);
+          setAccounts(accs);
+        } catch (err: any) {
+          toast({ title: '加载账户失败', description: err?.message, variant: 'destructive' });
+        }
+      })();
     } else {
       // 关闭时重置
       setInput('');
@@ -74,6 +99,7 @@ export function QuickRecordModal() {
       setNote('');
       setDate(formatDate(new Date(), 'yyyy-MM-dd'));
       setShowNLHint(true);
+      setAccountId('');
     }
   }, [quickRecordOpen]);
 
@@ -119,12 +145,22 @@ export function QuickRecordModal() {
       return;
     }
 
+    if (!accountId) {
+      toast({
+        title: '请选择账户',
+        description: '每笔交易都需要关联到具体账户',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       // 调用快捷记账API
       const result = await quickRecord({
         input: input || `${amount}元`,
         ledgerId: 'current', // 后端会解析当前用户的默认账本
+        accountId,
       });
 
       toast({
@@ -237,10 +273,34 @@ export function QuickRecordModal() {
               }}
               onKeyDown={handleKeyDown}
               placeholder="0.00"
-              className="flex-1 text-4xl font-bold bg-transparent outline-none tabular-nums placeholder:text-text-tertiary/40"
+              className="flex-1 text-4xl font-bold bg-transparent outline-none tabular-nums placeholder:text-[rgba(148,163,184,0.4)]"
               style={{ color: transactionType === TransactionType.EXPENSE ? '#DC2626' : '#16A34A' }}
             />
           </div>
+        </div>
+
+        {/* 账户选择（强制必选） */}
+        <div className="px-6 pb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Wallet size={14} className="text-primary" />
+            <span className="text-xs font-medium text-text-secondary">选择账户</span>
+          </div>
+          <Select value={accountId} onValueChange={setAccountId}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="请选择账户" />
+            </SelectTrigger>
+            <SelectContent>
+              {accounts.length === 0 && (
+                <div className="px-2 py-1.5 text-sm text-text-tertiary">暂无账户，请先添加</div>
+              )}
+              {accounts.map((acc) => (
+                <SelectItem key={acc.id} value={acc.id}>
+                  {acc.name}
+                  {acc.lastFourDigits ? `（****${acc.lastFourDigits}）` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* 分类网格 */}

@@ -66,3 +66,8 @@ export function correctTransactionCategory(id: string, categoryId: string): Prom
 export function undoTransaction(id: string, undoToken: string): Promise<{ success: boolean }> {
   return post(`/transactions/${id}/undo`, { undoToken });
 }
+
+/** 清空某家庭下全部交易数据（设置页「危险操作」调用） */
+export function clearAllTransactions(data: { familyId: string; confirm: boolean }): Promise<{ deleted: number }> {
+  return post<{ deleted: number }>('/transactions/clear', data);
+}

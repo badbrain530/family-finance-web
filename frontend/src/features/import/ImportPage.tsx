@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Upload,
   FileText,
@@ -47,48 +48,29 @@ const STATUS_CONFIG: Record<ImportStatus, { label: string; variant: 'default' | 
   [ImportStatus.FAILED]: { label: '失败', variant: 'destructive', icon: XCircle },
 };
 
-// 模拟导入历史
-const mockHistory = [
-  {
-    id: 'imp1',
-    platform: ImportPlatform.ALIPAY,
-    fileName: 'alipay_bill_202606.csv',
-    totalCount: 156,
-    successCount: 152,
-    failedCount: 4,
-    aiAccuracy: 0.94,
-    status: ImportStatus.CONFIRMED,
-    createdAt: '2026-07-01T10:30:00Z',
-  },
-  {
-    id: 'imp2',
-    platform: ImportPlatform.WECHAT,
-    fileName: 'wechat_bill_202606.csv',
-    totalCount: 89,
-    successCount: 89,
-    failedCount: 0,
-    aiAccuracy: 0.97,
-    status: ImportStatus.CONFIRMED,
-    createdAt: '2026-07-01T11:00:00Z',
-  },
-  {
-    id: 'imp3',
-    platform: ImportPlatform.CMB,
-    fileName: 'cmb_credit_202606.pdf',
-    totalCount: 0,
-    successCount: 0,
-    failedCount: 0,
-    aiAccuracy: null,
-    status: ImportStatus.FAILED,
-    createdAt: '2026-06-28T15:00:00Z',
-  },
-];
-
 export function ImportPage() {
   const { toast } = useToast();
   const [selectedPlatform, setSelectedPlatform] = useState<ImportPlatform>(ImportPlatform.ALIPAY);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  // TanStack Query 获取导入历史
+  const { data: importHistory } = useQuery({
+    queryKey: ['imports'],
+    queryFn: async () => {
+      // TODO: 接入真实 API
+      return [];
+    },
+  });
+
+  // 暂用常量（后续移除）
+  const mockHistory = [
+    { id: 'imp1', platform: ImportPlatform.ALIPAY, fileName: 'alipay_bill_202606.csv', totalCount: 156, successCount: 152, failedCount: 4, aiAccuracy: 0.94, status: ImportStatus.CONFIRMED, createdAt: '2026-07-01T10:30:00Z' },
+    { id: 'imp2', platform: ImportPlatform.WECHAT, fileName: 'wechat_bill_202606.csv', totalCount: 89, successCount: 89, failedCount: 0, aiAccuracy: 0.97, status: ImportStatus.CONFIRMED, createdAt: '2026-07-01T11:00:00Z' },
+    { id: 'imp3', platform: ImportPlatform.CMB, fileName: 'cmb_credit_202606.pdf', totalCount: 0, successCount: 0, failedCount: 0, aiAccuracy: null, status: ImportStatus.FAILED, createdAt: '2026-06-28T15:00:00Z' },
+  ];
+
+  const history = importHistory || mockHistory;
 
   // 拖拽处理
   const handleDragOver = (e: React.DragEvent) => {
@@ -267,8 +249,8 @@ export function ImportPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockHistory.map((record) => {
-                const status = STATUS_CONFIG[record.status];
+              {history.map((record: any) => {
+                const status = STATUS_CONFIG[record.status as ImportStatus];
                 const StatusIcon = status.icon;
                 const platform = PLATFORMS.find((p) => p.id === record.platform);
                 return (

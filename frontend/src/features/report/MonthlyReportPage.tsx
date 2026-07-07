@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   TrendingUp,
   TrendingDown,
@@ -18,6 +19,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { BarChart } from '@/components/charts/BarChart';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { cn, formatCurrency, formatPercentage, formatDate, getCurrentYearMonth } from '@/lib/utils';
 import { MONTH_NAMES } from '@/lib/constants';
@@ -27,71 +29,6 @@ import type { MonthlyReport, AdviceItem } from '@/types/report';
  * AI洞察月报页面
  * 月份选择 + 3个KPI（含环比）+ AI建议列表 + 收支分类对比图
  */
-
-// 模拟月报数据
-const mockReport: MonthlyReport = {
-  id: 'r1',
-  familyId: 'f1',
-  year: 2026,
-  month: 7,
-  totalIncome: 18500,
-  totalExpense: 12380.5,
-  balance: 6119.5,
-  previousMonthBalance: 5200,
-  categoryBreakdown: [
-    { categoryId: 'c1', categoryName: '食品烟酒', amount: 4200, percentage: 33.9, previousMonthAmount: 3800, trend: 'up' },
-    { categoryId: 'c2', categoryName: '居住', amount: 3500, percentage: 28.3, previousMonthAmount: 3500, trend: 'flat' },
-    { categoryId: 'c3', categoryName: '交通通信', amount: 1800, percentage: 14.5, previousMonthAmount: 1500, trend: 'up' },
-    { categoryId: 'c4', categoryName: '教育文化', amount: 1500, percentage: 12.1, previousMonthAmount: 2000, trend: 'down' },
-    { categoryId: 'c5', categoryName: '生活用品', amount: 980, percentage: 7.9, previousMonthAmount: 700, trend: 'up' },
-    { categoryId: 'c6', categoryName: '其他', amount: 400.5, percentage: 3.3, previousMonthAmount: 300, trend: 'up' },
-  ],
-  anomalies: [
-    { type: 'large_single', description: '7月3日 华润万家消费 ¥1,280', amount: 1280, categoryId: 'c1', date: '2026-07-03' },
-    { type: 'category_spike', description: '交通通信支出环比增长20%', amount: 300, categoryId: 'c3', date: '2026-07-04' },
-  ],
-  advice: [
-    {
-      id: 'a1',
-      category: 'saving',
-      title: '食品烟酒支出偏高',
-      content: '本月食品烟酒支出4200元，环比增长10.5%。建议减少在外就餐频率，每周自做2-3顿饭，预计可节省800元/月。',
-      actionType: 'adjust_budget',
-      actionUrl: '/budget',
-      isHelpful: null,
-    },
-    {
-      id: 'a2',
-      category: 'budget',
-      title: '交通通信即将超预算',
-      content: '交通通信已用90%预算，本月剩余3天需控制交通支出在200元以内。建议优先使用公共交通。',
-      actionType: 'view_budget',
-      actionUrl: '/budget',
-      isHelpful: null,
-    },
-    {
-      id: 'a3',
-      category: 'goal',
-      title: '日本旅行基金进度良好',
-      content: '你的日本旅行基金已存56.7%，按当前进度可在10月前达成目标。建议保持每月存入3000元。',
-      actionType: 'view_goal',
-      actionUrl: '/budget',
-      isHelpful: null,
-    },
-    {
-      id: 'a4',
-      category: 'anomaly',
-      title: '检测到大额支出',
-      content: '7月3日华润万家消费1280元，为近3个月最大单笔食品支出。如非例行采购请关注。',
-      actionType: null,
-      actionUrl: null,
-      isHelpful: null,
-    },
-  ],
-  benchmarkComparison: null,
-  generatedAt: '2026-07-04T08:00:00Z',
-  readBy: [],
-};
 
 // 建议分类图标配置
 const ADVICE_ICON: Record<AdviceItem['category'], typeof Lightbulb> = {
@@ -122,7 +59,53 @@ export function MonthlyReportPage() {
   const [displayMonth, setDisplayMonth] = useState(month);
   const [adviceFeedback, setAdviceFeedback] = useState<Record<string, boolean | null>>({});
 
-  const report = mockReport;
+  // TanStack Query 获取月报数据
+  const { data: reportData, isLoading } = useQuery({
+    queryKey: ['monthly-report', displayYear, displayMonth],
+    queryFn: async () => {
+      // TODO: 接入真实 API
+      return null;
+    },
+  });
+
+  // 暂用常量（后续移除）
+  const mockReport: MonthlyReport = {
+    id: 'r1',
+    familyId: 'f1',
+    year: 2026,
+    month: 7,
+    totalIncome: 18500,
+    totalExpense: 12380.5,
+    balance: 6119.5,
+    previousMonthBalance: 5200,
+    categoryBreakdown: [
+      { categoryId: 'c1', categoryName: '食品烟酒', amount: 4200, percentage: 33.9, previousMonthAmount: 3800, trend: 'up' },
+      { categoryId: 'c2', categoryName: '居住', amount: 3500, percentage: 28.3, previousMonthAmount: 3500, trend: 'flat' },
+      { categoryId: 'c3', categoryName: '交通通信', amount: 1800, percentage: 14.5, previousMonthAmount: 1500, trend: 'up' },
+      { categoryId: 'c4', categoryName: '教育文化', amount: 1500, percentage: 12.1, previousMonthAmount: 2000, trend: 'down' },
+      { categoryId: 'c5', categoryName: '生活用品', amount: 980, percentage: 7.9, previousMonthAmount: 700, trend: 'up' },
+      { categoryId: 'c6', categoryName: '其他', amount: 400.5, percentage: 3.3, previousMonthAmount: 300, trend: 'up' },
+    ],
+    anomalies: [
+      { type: 'large_single', description: '7月3日 华润万家消费 ¥1,280', amount: 1280, categoryId: 'c1', date: '2026-07-03' },
+      { type: 'category_spike', description: '交通通信支出环比增长20%', amount: 300, categoryId: 'c3', date: '2026-07-04' },
+    ],
+    advice: [
+      { id: 'a1', category: 'saving', title: '食品烟酒支出偏高', content: '本月食品烟酒支出4200元...', actionType: 'adjust_budget', actionUrl: '/budget', isHelpful: null },
+      { id: 'a2', category: 'budget', title: '交通通信即将超预算', content: '交通通信已用90%预算...', actionType: 'view_budget', actionUrl: '/budget', isHelpful: null },
+      { id: 'a3', category: 'goal', title: '日本旅行基金进度良好', content: '你的日本旅行基金已存56.7%...', actionType: 'view_goal', actionUrl: '/budget', isHelpful: null },
+      { id: 'a4', category: 'anomaly', title: '检测到大额支出', content: '7月3日华润万家消费1280元...', actionType: null, actionUrl: null, isHelpful: null },
+    ],
+    benchmarkComparison: null,
+    generatedAt: '2026-07-04T08:00:00Z',
+    readBy: [],
+  };
+
+  if (isLoading) {
+    return <LoadingSpinner fullScreen />;
+  }
+
+  const report = reportData || mockReport;
 
   // 环比计算
   const balanceChange = report.balance - (report.previousMonthBalance || 0);

@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
@@ -14,6 +15,7 @@ import { CreateTransactionDto, UpdateTransactionDto } from './dto/create-transac
 import { QueryTransactionDto } from './dto/query-transaction.dto';
 import { BatchOperationDto } from './dto/batch-operation.dto';
 import { QuickRecordDto } from './dto/quick-record.dto';
+import { ClearTransactionsDto } from './dto/clear-transactions.dto';
 
 /**
  * 交易控制器
@@ -69,6 +71,26 @@ export class TransactionsController {
     @Body() dto: BatchOperationDto,
   ) {
     return this.transactionsService.batchOperation(user.userId, dto);
+  }
+
+  /**
+   * 清空全部交易（仅删交易，保留账户/分类/预算/设置）
+   * POST /api/transactions/clear
+   * 注意：路由声明需早于 :id 参数路由，避免被其拦截（NestJS 中静态路径仍安全，此处仅作规范）
+   */
+  @Post('clear')
+  async clearAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ClearTransactionsDto,
+  ) {
+    // confirm 必须为 true，否则视为未确认（VALIDATION_ERROR）
+    if (dto.confirm !== true) {
+      throw new BadRequestException({
+        code: 1001,
+        message: '请确认清除操作（confirm 必须为 true）',
+      });
+    }
+    return this.transactionsService.clearAllTransactions(dto.familyId, user.userId);
   }
 
   /**

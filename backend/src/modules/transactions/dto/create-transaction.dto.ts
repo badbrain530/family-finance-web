@@ -29,6 +29,11 @@ export class CreateTransactionDto {
   @IsString()
   readonly categoryId?: string | null;
 
+  /** 账户ID（账户管理增量，可空：历史交易允许为空，决策#1） */
+  @IsOptional()
+  @IsString()
+  readonly accountId?: string | null;
+
   /** 交易类型：income/expense/transfer */
   @IsNotEmpty({ message: '交易类型不能为空' })
   @IsIn(['income', 'expense', 'transfer'], { message: '交易类型必须为 income/expense/transfer' })
@@ -84,6 +89,11 @@ export class UpdateTransactionDto {
   @IsOptional()
   @IsString()
   readonly categoryId?: string | null;
+
+  /** 账户ID（账户管理增量，可空） */
+  @IsOptional()
+  @IsString()
+  readonly accountId?: string | null;
 
   @IsOptional()
   @IsIn(['income', 'expense', 'transfer'])

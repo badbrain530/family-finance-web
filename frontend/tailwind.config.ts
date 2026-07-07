@@ -59,18 +59,18 @@ const config: Config = {
           light: '#FBBF24',
           dark: '#D97706',
         },
-        // 背景色
-        background: '#F8FAFC',
-        surface: '#FFFFFF',
-        'surface-dark': '#1E293B',
-        // 文本色
-        'text-primary': '#0F172A',
-        'text-secondary': '#64748B',
-        'text-tertiary': '#94A3B8',
+        // 背景色（跟随 CSS 变量，便于深色模式统一切换）
+        background: 'var(--color-bg)',
+        surface: 'var(--color-surface)',
+        'surface-dark': 'var(--color-surface-dark)',
+        // 文本色（跟随 CSS 变量）
+        'text-primary': 'var(--color-text-primary)',
+        'text-secondary': 'var(--color-text-secondary)',
+        'text-tertiary': 'var(--color-text-tertiary)',
         'text-inverse': '#FFFFFF',
-        // 边框色
-        border: '#E2E8F0',
-        'border-dark': '#334155',
+        // 边框色（跟随 CSS 变量）
+        border: 'var(--color-border)',
+        'border-dark': 'var(--color-border-dark)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],

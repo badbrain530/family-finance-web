@@ -38,6 +38,8 @@ export interface Transaction {
   ledgerId: string;
   userId: string;
   categoryId: string | null;
+  /** 账户ID（账户管理增量，可空：历史交易允许为空；既有代码构造时未必包含，故可选） */
+  accountId?: string | null;
   type: TransactionType;
   amount: number;
   date: string;
@@ -56,6 +58,7 @@ export interface Transaction {
   tags: string[];
   // 关联数据
   category?: Category;
+  account?: import('./account').Account;
   user?: import('./user').User;
 }
 
@@ -63,6 +66,8 @@ export interface Transaction {
 export interface CreateTransactionRequest {
   ledgerId: string;
   categoryId?: string;
+  /** 账户ID（可空） */
+  accountId?: string | null;
   type: TransactionType;
   amount: number;
   date: string;
@@ -76,6 +81,8 @@ export interface CreateTransactionRequest {
 /** 更新交易请求 */
 export interface UpdateTransactionRequest {
   categoryId?: string;
+  /** 账户ID（可空，取消关联时传 null） */
+  accountId?: string | null;
   type?: TransactionType;
   amount?: number;
   date?: string;
@@ -105,6 +112,8 @@ export interface TransactionQueryParams {
 export interface QuickRecordRequest {
   input: string;
   ledgerId: string;
+  /** 关联账户ID（快捷记账强制选择，用于账户流水与余额统计） */
+  accountId?: string;
 }
 
 /** 批量操作请求 */

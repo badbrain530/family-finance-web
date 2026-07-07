@@ -8,6 +8,10 @@ import { CommandPalette } from '@/components/common/CommandPalette';
 import { Toaster } from '@/components/ui/toaster';
 import { useGlobalHotkeys } from '@/hooks/useHotkeys';
 import { useUIStore } from '@/store/uiStore';
+import { useAuthStore } from '@/store/authStore';
+import { useNotificationStore } from '@/store/notificationStore';
+import { getUnreadCount } from '@/services/notification.service';
+import { useEffect } from 'react';
 
 /**
  * 应用主布局组件
@@ -21,10 +25,27 @@ import { useUIStore } from '@/store/uiStore';
  * - useGlobalHotkeys（全局快捷键监听）
  */
 export function AppLayout() {
-  const { sidebarCollapsed } = useUIStore();
+  const { sidebarCollapsed, theme } = useUIStore();
+  const { isAuthenticated } = useAuthStore();
+  const setUnreadCount = useNotificationStore((s) => s.setUnreadCount);
 
   // 注册全局快捷键
   useGlobalHotkeys();
+
+  // 主题变化时同步到 <html> 的 class（驱动 .dark CSS 变量换肤）
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
+
+  // 登录后同步未读通知数，驱动顶栏铃铛红点
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    getUnreadCount()
+      .then((res) => setUnreadCount(res.count))
+      .catch(() => {
+        /* 忽略：通知模块未初始化不影响主流程 */
+      });
+  }, [isAuthenticated, setUnreadCount]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">

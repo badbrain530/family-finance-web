@@ -8,6 +8,8 @@ import {
   FileText,
   Bell,
   Settings,
+  Tags,
+  PiggyBank,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -25,6 +27,8 @@ const iconMap: Record<string, React.ComponentType<{ size?: number | string; clas
   FileText,
   Bell,
   Settings,
+  Tags,
+  PiggyBank,
 };
 
 interface SidebarProps {

@@ -43,6 +43,30 @@ export class TransactionsService {
   // ==================== 交易CRUD ====================
 
   /**
+   * 清空家庭全部交易（保留账户/分类/预算/设置，决策#3）
+   * 仅删除该家庭下的交易，不触发级联删账户
+   * @param familyId 家庭ID
+   * @param userId 操作者用户ID（用于家庭隔离校验）
+   * @returns 删除数量
+   */
+  async clearAllTransactions(familyId: string, userId: string): Promise<{ deleted: number }> {
+    // 家庭隔离校验：确认操作者属于该家庭
+    await this.familiesService.validateFamilyMember(familyId, userId);
+
+    // 按家庭删除：通过账本归属过滤
+    const result = await this.prisma.transaction.deleteMany({
+      where: { ledger: { familyId } },
+    });
+
+    this.logger.log(`清空交易: family=${familyId}, deleted=${result.count}, by=${userId}`);
+
+    // 发出事件，便于前端/WebSocket同步
+    this.eventEmitter.emit('transactions.cleared', { familyId, userId, deleted: result.count });
+
+    return { deleted: result.count };
+  }
+
+  /**
    * 创建交易
    * @param userId 记账人ID
    * @param dto 交易信息
@@ -68,12 +92,27 @@ export class TransactionsService {
     // 判断是否大额支出
     const isLargeExpense = dto.type === 'expense' && dto.amount >= LARGE_EXPENSE_THRESHOLD;
 
+    // 校验账户（若指定）属于该家庭，避免越权关联
+    if (dto.accountId) {
+      const account = await this.prisma.account.findUnique({
+        where: { id: dto.accountId },
+        select: { familyId: true },
+      });
+      if (!account) {
+        throw new BadRequestException('账户不存在');
+      }
+      if (account.familyId !== ledger.familyId) {
+        throw new BadRequestException('账户不属于该家庭');
+      }
+    }
+
     // 创建交易
     const transaction = await this.prisma.transaction.create({
       data: {
         ledgerId: dto.ledgerId,
         userId,
         categoryId: dto.categoryId || null,
+        accountId: dto.accountId || null,
         type: dto.type.toUpperCase() as 'INCOME' | 'EXPENSE' | 'TRANSFER',
         amount: dto.amount,
         date: new Date(dto.date),
@@ -272,6 +311,22 @@ export class TransactionsService {
     if (dto.merchant !== undefined) updateData.merchant = dto.merchant || null;
     if (dto.note !== undefined) updateData.note = dto.note || null;
     if (dto.tags !== undefined) updateData.tags = dto.tags;
+    // 账户ID（账户管理增量）：可设置为新账户、置空（取消关联）
+    if (dto.accountId !== undefined) {
+      if (dto.accountId) {
+        const account = await this.prisma.account.findUnique({
+          where: { id: dto.accountId },
+          select: { familyId: true },
+        });
+        if (!account) {
+          throw new BadRequestException('账户不存在');
+        }
+        if (account.familyId !== transaction.ledger.familyId) {
+          throw new BadRequestException('账户不属于该家庭');
+        }
+      }
+      updateData.accountId = dto.accountId || null;
+    }
 
     const updated = await this.prisma.transaction.update({
       where: { id: transactionId },
@@ -354,12 +409,27 @@ export class TransactionsService {
       confidence = parsed.confidence * 0.7;
     }
 
+    // 校验账户（若指定）属于该家庭，避免越权关联
+    if (dto.accountId) {
+      const account = await this.prisma.account.findUnique({
+        where: { id: dto.accountId },
+        select: { familyId: true },
+      });
+      if (!account) {
+        throw new BadRequestException('账户不存在');
+      }
+      if (account.familyId !== ledger.familyId) {
+        throw new BadRequestException('账户不属于该家庭');
+      }
+    }
+
     // 创建交易
     const transaction = await this.prisma.transaction.create({
       data: {
         ledgerId: dto.ledgerId,
         userId,
         categoryId,
+        accountId: dto.accountId || null,
         type: parsed.type.toUpperCase() as 'INCOME' | 'EXPENSE',
         amount: parsed.amount,
         date: parsed.date,

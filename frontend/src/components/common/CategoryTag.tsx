@@ -21,7 +21,7 @@ export function CategoryTag({ category, className, size = 'sm' }: CategoryTagPro
           className,
         )}
       >
-        <span className="w-2 h-2 rounded-full bg-text-tertiary/40" />
+        <span className="w-2 h-2 rounded-full bg-[rgba(148,163,184,0.4)]" />
         未分类
       </span>
     );

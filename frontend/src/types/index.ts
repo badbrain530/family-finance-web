@@ -7,6 +7,7 @@ export * from './api';
 export * from './user';
 export * from './family';
 export * from './transaction';
+export * from './account';
 export * from './budget';
 export * from './import';
 export * from './report';

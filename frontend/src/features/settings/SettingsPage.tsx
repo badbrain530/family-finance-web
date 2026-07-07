@@ -31,6 +31,8 @@ import { Switch } from '@/components/ui/switch';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { getCurrentFamily } from '@/services/family.service';
+import { clearAllTransactions } from '@/services/transaction.service';
 import {
   Dialog,
   DialogContent,
@@ -101,6 +103,9 @@ export function SettingsPage() {
   // 删除账户弹窗
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
+  // 清除数据弹窗
+  const [clearDataDialogOpen, setClearDataDialogOpen] = useState(false);
 
   // 保存个人信息
   const handleSaveProfile = async () => {
@@ -189,6 +194,26 @@ export function SettingsPage() {
     logout();
     navigate(ROUTES.LOGIN);
     toast({ title: '账户已删除', description: '感谢你的使用', variant: 'default' });
+  };
+
+  // 清除所有交易数据
+  const handleClearAllData = async () => {
+    setClearDataDialogOpen(false);
+    try {
+      const family = await getCurrentFamily();
+      const { deleted } = await clearAllTransactions({ familyId: family.id, confirm: true });
+      toast({
+        title: '所有交易数据已清除',
+        description: `已删除 ${deleted} 条交易`,
+        variant: 'success',
+      });
+    } catch (err: any) {
+      toast({
+        title: '清除失败',
+        description: err?.message || '请稍后重试',
+        variant: 'destructive',
+      });
+    }
   };
 
   const activeConfig = TAB_CONFIGS.find((t) => t.id === activeTab)!;
@@ -703,7 +728,11 @@ export function SettingsPage() {
                         删除所有交易记录，保留账户和设置
                       </p>
                     </div>
-                    <Button variant="outline" className="text-expense border-expense/30 hover:bg-expense/5">
+                    <Button
+                      variant="outline"
+                      className="text-expense border-expense/30 hover:bg-expense/5"
+                      onClick={() => setClearDataDialogOpen(true)}
+                    >
                       <Trash2 size={14} className="mr-1" />
                       清除
                     </Button>
@@ -730,6 +759,32 @@ export function SettingsPage() {
           )}
         </div>
       </div>
+
+      {/* 清除交易数据确认弹窗 */}
+      <Dialog open={clearDataDialogOpen} onOpenChange={setClearDataDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-expense">
+              <AlertTriangle size={18} />
+              确认清除数据
+            </DialogTitle>
+            <DialogDescription>
+              此操作将删除所有交易记录，但保留账户、分类、预算等设置。此操作不可撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setClearDataDialogOpen(false)}
+            >
+              取消
+            </Button>
+            <Button variant="destructive" onClick={handleClearAllData}>
+              确认清除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 删除账户确认弹窗 */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
