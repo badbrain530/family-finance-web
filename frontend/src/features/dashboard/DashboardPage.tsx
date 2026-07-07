@@ -64,42 +64,10 @@ export function DashboardPage() {
     enabled: !!familyId,
   });
 
-  // Loading 状态（家庭或仪表盘任一加载中）
-  if (isLoading || familyQuery.isLoading) {
-    return <LoadingSpinner fullScreen />;
-  }
-
-  // 错误态：明确提示，而非静默空白仪表盘（缺陷：原实现仅处理 isLoading，接口失败时空白/崩溃）
-  const activeError = error ?? familyQuery.error;
-  if (isError || familyQuery.isError) {
-    return (
-      <div className="page-container">
-        <Card className="mt-10">
-          <CardHeader>
-            <CardTitle className="text-base text-expense">加载失败</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-text-secondary">
-              {activeError?.message || '仪表盘数据加载失败，请稍后重试'}
-            </p>
-            <Button
-              variant="outline"
-              onClick={() => {
-                familyQuery.refetch();
-                refetch();
-              }}
-            >
-              重试
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   // 安全归一化：后端可能返回「非空但字段不全」的对象（例如 monthlyTrend / categoryBreakdown 为 undefined）。
   // 若只对整体做 `dashboardData || DEFAULTS` 兜底，partial 对象会因「整体为 truthy」而绕过兜底，
   // 导致 `data.xxx.map` 抛 TypeError。这里对每个子字段单独兜底，保证 data 始终结构完整、可安全渲染。
+  // 注意：data 与 kpiCards 必须定义在所有提前 return 之前，以保证 Hook 调用顺序稳定（修复 React #310）。
   const data = {
     summary: dashboardData?.summary ?? {
       totalIncome: 0,
@@ -161,6 +129,39 @@ export function DashboardPage() {
       },
     ];
   }, [data]);
+
+  // Loading 状态（家庭或仪表盘任一加载中）
+  if (isLoading || familyQuery.isLoading) {
+    return <LoadingSpinner fullScreen />;
+  }
+
+  // 错误态：明确提示，而非静默空白仪表盘（缺陷：原实现仅处理 isLoading，接口失败时空白/崩溃）
+  const activeError = error ?? familyQuery.error;
+  if (isError || familyQuery.isError) {
+    return (
+      <div className="page-container">
+        <Card className="mt-10">
+          <CardHeader>
+            <CardTitle className="text-base text-expense">加载失败</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-text-secondary">
+              {activeError?.message || '仪表盘数据加载失败，请稍后重试'}
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                familyQuery.refetch();
+                refetch();
+              }}
+            >
+              重试
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // 月份切换
   const handlePrevMonth = () => {
