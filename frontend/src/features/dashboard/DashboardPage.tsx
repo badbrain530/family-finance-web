@@ -60,15 +60,28 @@ export function DashboardPage() {
     return <LoadingSpinner fullScreen />;
   }
 
-  // API 不可用时使用空数据渲染（不崩溃）
-  const data = dashboardData || {
-    summary: { totalIncome: 0, totalExpense: 0, balance: 0, previousBalance: 0, balanceTrend: 'flat' as const },
-    budgetProgress: { totalBudget: 0, totalSpent: 0, percentage: 0, remaining: 0 },
-    recentTransactions: [],
-    monthlyTrend: [],
-    categoryBreakdown: [],
-    wishGoals: [],
-    memberContribution: [],
+  // 安全归一化：后端可能返回「非空但字段不全」的对象（例如 monthlyTrend / categoryBreakdown 为 undefined）。
+  // 若只对整体做 `dashboardData || DEFAULTS` 兜底，partial 对象会因「整体为 truthy」而绕过兜底，
+  // 导致 `data.xxx.map` 抛 TypeError。这里对每个子字段单独兜底，保证 data 始终结构完整、可安全渲染。
+  const data = {
+    summary: dashboardData?.summary ?? {
+      totalIncome: 0,
+      totalExpense: 0,
+      balance: 0,
+      previousBalance: 0,
+      balanceTrend: 'flat' as const,
+    },
+    budgetProgress: dashboardData?.budgetProgress ?? {
+      totalBudget: 0,
+      totalSpent: 0,
+      percentage: 0,
+      remaining: 0,
+    },
+    recentTransactions: dashboardData?.recentTransactions ?? [],
+    monthlyTrend: dashboardData?.monthlyTrend ?? [],
+    categoryBreakdown: dashboardData?.categoryBreakdown ?? [],
+    wishGoals: dashboardData?.wishGoals ?? [],
+    memberContribution: dashboardData?.memberContribution ?? [],
   };
 
   // KPI卡片数据
@@ -355,7 +368,7 @@ export function DashboardPage() {
                 <div key={member.userId} className="flex items-center gap-3 p-3 rounded-lg bg-primary-50/30">
                   <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center shrink-0">
                     <span className="text-sm font-medium text-primary-600">
-                      {member.nickname.charAt(0)}
+                      {(member.nickname || '').charAt(0)}
                     </span>
                   </div>
                   <div className="flex-1">
