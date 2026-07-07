@@ -3,6 +3,7 @@ import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
 import { FamiliesModule } from '../families/families.module';
 import { AiModule } from '../ai/ai.module';
+import { PrismaModule } from '../../prisma/prisma.module';
 
 /**
  * 报告模块
@@ -10,7 +11,7 @@ import { AiModule } from '../ai/ai.module';
  * 与 AiModule（提供 AiReportService 做真实月报生成）。
  */
 @Module({
-  imports: [FamiliesModule, AiModule],
+  imports: [PrismaModule, FamiliesModule, AiModule],
   controllers: [ReportsController],
   providers: [ReportsService],
 })
