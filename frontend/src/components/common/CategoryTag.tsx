@@ -1,12 +1,13 @@
 import { cn } from '@/lib/utils';
 import type { Category } from '@/types/transaction';
+import { CategoryIcon } from '@/components/common/CategoryIcon';
 
 /**
  * 分类标签组件
- * 显示分类名称和颜色圆点
+ * 显示分类图标（内联 SVG）+ 颜色圆点 + 名称
  */
 interface CategoryTagProps {
-  category: Pick<Category, 'name' | 'color'> | null | undefined;
+  category: Pick<Category, 'name' | 'color' | 'icon'> | null | undefined;
   className?: string;
   size?: 'sm' | 'md';
 }
@@ -35,6 +36,9 @@ export function CategoryTag({ category, className, size = 'sm' }: CategoryTagPro
         className,
       )}
     >
+      {category.icon && (
+        <CategoryIcon iconKey={category.icon} size={12} color={category.color} />
+      )}
       <span
         className="w-2 h-2 rounded-full shrink-0"
         style={{ backgroundColor: category.color || '#3B82F6' }}

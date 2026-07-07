@@ -23,6 +23,10 @@ export interface Category {
   familyId: string;
   parentId: string | null;
   name: string;
+  /**
+   * 分类图标 key（见 features/categories/categoryIconMeta.ts 的 CategoryIconKey），
+   * 例如 'dining' / 'transport' / 'other'。前端通过 getCategoryIcon(key) 渲染对应内联 SVG。
+   */
   icon: string;
   color: string;
   sortOrder: number;
@@ -130,6 +134,7 @@ export interface BatchClassifyRequest {
 export interface CreateCategoryRequest {
   name: string;
   parentId?: string;
+  /** 图标 key（见 CategoryIconKey），如 'dining'。存库即该字符串。 */
   icon: string;
   color: string;
 }

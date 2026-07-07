@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import * as Icons from 'lucide-react';
-import { Tag, Plus, Pencil, Trash2, Lock, Sparkles, type LucideIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Lock, Sparkles } from 'lucide-react';
 import { getCurrentFamily } from '@/services/family.service';
 import {
   getCategories,
@@ -23,30 +22,21 @@ import {
 import { cn } from '@/lib/utils';
 import type { Category, CreateCategoryRequest } from '@/types/transaction';
 import type { Family } from '@/types/family';
+import { getCategoryIcon } from '@/features/categories/categoryIcons';
+import { ALL_ICON_KEYS, ICON_COLOR } from '@/features/categories/categoryIconMeta';
+import { CategoryIcon } from '@/components/common/CategoryIcon';
 
-/** 可选图标（用于新建二级分类） */
-const ICON_OPTIONS = [
-  'utensils', 'car', 'home', 'shopping-bag', 'book-open', 'heart-pulse',
-  'gamepad', 'users', 'shield', 'wallet', 'coffee', 'gift', 'plane',
-  'film', 'dumbbell', 'map', 'pill', 'graduation-cap', 'briefcase', 'trending-up',
-  'smartphone', 'zap', 'credit-card', 'banknote', 'piggy-bank', 'more-horizontal',
-];
-
-/** 可选颜色 */
-const COLOR_OPTIONS = [
-  '#FF6B6B', '#F59E0B', '#4ECDC4', '#45B7D1', '#98D8C8', '#F7DC6F',
-  '#BB8FCE', '#85C1E9', '#27AE60', '#2980B9', '#E67E22', '#95A5A6',
-];
-
-/** 动态获取 lucide 图标组件 */
-function getIcon(name: string): LucideIcon {
-  return ((Icons as any)[name] as LucideIcon) || Tag;
-}
+/** 可选图标（基于 25 个分类图标 key，顺序见 ALL_ICON_KEYS） */
+const ICON_OPTIONS = ALL_ICON_KEYS;
 
 /**
  * 分类管理页
  * 左：一级分类列表（可折叠/选中）；右：选中大类下的二级分类网格
  * 支持二级分类增删改查、系统分类锁定、新家庭初始化引导
+ *
+ * 图标与配色策略（单一来源）：
+ * - 图标：从 ALL_ICON_KEYS 中选择，存为图标 key（CategoryIconKey）
+ * - 配色：随所选图标自动赋值对应设计 token（ICON_COLOR[key]），不再提供自由调色板
  */
 export function CategoriesManagePage() {
   const { toast } = useToast();
@@ -60,8 +50,8 @@ export function CategoriesManagePage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingCat, setEditingCat] = useState<Category | null>(null);
   const [formName, setFormName] = useState('');
-  const [formIcon, setFormIcon] = useState('tag');
-  const [formColor, setFormColor] = useState(COLOR_OPTIONS[0]);
+  const [formIcon, setFormIcon] = useState('other');
+  const [formColor, setFormColor] = useState(ICON_COLOR.other);
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -107,8 +97,8 @@ export function CategoriesManagePage() {
     if (!selectedParent) return;
     setEditingCat(null);
     setFormName('');
-    setFormIcon('tag');
-    setFormColor(COLOR_OPTIONS[0]);
+    setFormIcon('other');
+    setFormColor(ICON_COLOR.other);
     setFormOpen(true);
   };
 
@@ -213,7 +203,7 @@ export function CategoriesManagePage() {
           <div className="text-xs text-text-tertiary px-2 py-1">一级分类（{categories.length}）</div>
           <div className="space-y-1 mt-1">
             {categories.map((cat) => {
-              const Icon = getIcon(cat.icon);
+              const Glyph = getCategoryIcon(cat.icon);
               const active = selectedParent?.id === cat.id;
               return (
                 <button
@@ -226,7 +216,7 @@ export function CategoriesManagePage() {
                       : 'text-text-secondary hover:bg-primary-50/50',
                   )}
                 >
-                  <Icon size={16} style={{ color: cat.color }} />
+                  <Glyph size={16} color={cat.color} />
                   <span className="truncate">{cat.name}</span>
                   <span className="ml-auto text-xs text-text-tertiary">
                     {cat.children?.length || 0}
@@ -251,7 +241,7 @@ export function CategoriesManagePage() {
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {selectedParent?.children?.map((child) => {
-              const Icon = getIcon(child.icon);
+              const Glyph = getCategoryIcon(child.icon);
               return (
                 <div
                   key={child.id}
@@ -261,7 +251,7 @@ export function CategoriesManagePage() {
                     className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
                     style={{ backgroundColor: child.color + '20' }}
                   >
-                    <Icon size={18} style={{ color: child.color }} />
+                    <Glyph size={18} color={child.color} />
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-text-primary truncate">{child.name}</div>
@@ -322,43 +312,25 @@ export function CategoriesManagePage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label>图标</Label>
+              <Label>图标（颜色随图标自动匹配）</Label>
               <div className="grid grid-cols-8 gap-1.5 max-h-32 overflow-y-auto pr-1">
-                {ICON_OPTIONS.map((ic) => {
-                  const Ic = getIcon(ic);
-                  return (
-                    <button
-                      key={ic}
-                      type="button"
-                      onClick={() => setFormIcon(ic)}
-                      className={cn(
-                        'w-9 h-9 rounded-lg flex items-center justify-center border transition-colors',
-                        formIcon === ic
-                          ? 'border-primary bg-primary-50 text-primary-600'
-                          : 'border-border text-text-secondary hover:border-primary/30',
-                      )}
-                    >
-                      <Ic size={16} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>颜色</Label>
-              <div className="flex flex-wrap gap-2">
-                {COLOR_OPTIONS.map((c) => (
+                {ICON_OPTIONS.map((ic) => (
                   <button
-                    key={c}
+                    key={ic}
                     type="button"
-                    onClick={() => setFormColor(c)}
+                    onClick={() => {
+                      setFormIcon(ic);
+                      setFormColor(ICON_COLOR[ic]);
+                    }}
                     className={cn(
-                      'w-7 h-7 rounded-full border-2 transition-transform',
-                      formColor === c ? 'border-text-primary scale-110' : 'border-transparent',
+                      'w-9 h-9 rounded-lg flex items-center justify-center border transition-colors',
+                      formIcon === ic
+                        ? 'border-primary bg-primary-50 text-primary-600'
+                        : 'border-border text-text-secondary hover:border-primary/30',
                     )}
-                    style={{ backgroundColor: c }}
-                  />
+                  >
+                    <CategoryIcon iconKey={ic} size={16} />
+                  </button>
                 ))}
               </div>
             </div>
