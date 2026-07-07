@@ -43,6 +43,16 @@ export class FamiliesController {
   }
 
   /**
+   * 获取当前家庭（最近加入的家庭）
+   * GET /api/families/current
+   * 静态路由 current 优先级高于参数路由 :id，不会冲突
+   */
+  @Get('current')
+  async getCurrentFamily(@CurrentUser() user: AuthenticatedUser) {
+    return this.familiesService.getCurrentFamily(user.userId);
+  }
+
+  /**
    * 获取家庭信息
    * GET /api/families/:id
    */

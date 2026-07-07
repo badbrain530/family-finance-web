@@ -145,6 +145,23 @@ export class FamiliesService {
   }
 
   /**
+   * 获取当前家庭（用户最近加入的家庭）
+   * 直接基于 userId 查询其真实所属家庭，不调用 validateFamilyMember，
+   * 避免误报「您不是该家庭的成员」。getUserFamilies 已按 joinedAt desc 排序，
+   * 列表第一个即最近加入的家庭，作为「当前家庭」。
+   * @param userId 用户ID
+   * @returns 当前家庭信息（Family 结构）
+   * @throws NotFoundException 如果用户未加入任何家庭
+   */
+  async getCurrentFamily(userId: string) {
+    const families = await this.getUserFamilies(userId);
+    if (families.length === 0) {
+      throw new NotFoundException('您还没有加入任何家庭');
+    }
+    return families[0];
+  }
+
+  /**
    * 更新家庭信息
    * @param familyId 家庭ID
    * @param userId 操作者用户ID
