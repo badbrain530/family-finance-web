@@ -31,6 +31,7 @@ import { CategoryTag } from '@/components/common/CategoryTag';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { getDashboardData } from '@/services/dashboard.service';
+import { getCurrentFamily } from '@/services/family.service';
 import type { Transaction } from '@/types/transaction';
 
 /**
@@ -47,17 +48,53 @@ export function DashboardPage() {
   const [displayYear, setDisplayYear] = useState(year);
   const [displayMonth, setDisplayMonth] = useState(month);
 
+  // 当前家庭（正确的 familyId 来源，与 AccountsPage 保持一致：通过 getCurrentFamily() 取 family.id）
+  // 注意：本项目真正的 familyId 来自「当前家庭」，不是 user.id。
+  // 上一轮误用 user.id 当 familyId，导致后端 validateFamilyMember(familyId, userId) 校验失败 → 404/403。
+  const familyQuery = useQuery({
+    queryKey: ['currentFamily'],
+    queryFn: getCurrentFamily,
+  });
+  const familyId = familyQuery.data?.id ?? '';
+
   // 使用 TanStack Query 获取仪表盘数据
-  const familyId = user?.id || '';
-  const { data: dashboardData, isLoading } = useQuery({
+  const { data: dashboardData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['dashboard', familyId, displayYear, displayMonth],
     queryFn: () => getDashboardData(familyId, displayYear, displayMonth),
     enabled: !!familyId,
   });
 
-  // Loading 状态
-  if (isLoading) {
+  // Loading 状态（家庭或仪表盘任一加载中）
+  if (isLoading || familyQuery.isLoading) {
     return <LoadingSpinner fullScreen />;
+  }
+
+  // 错误态：明确提示，而非静默空白仪表盘（缺陷：原实现仅处理 isLoading，接口失败时空白/崩溃）
+  const activeError = error ?? familyQuery.error;
+  if (isError || familyQuery.isError) {
+    return (
+      <div className="page-container">
+        <Card className="mt-10">
+          <CardHeader>
+            <CardTitle className="text-base text-expense">加载失败</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-text-secondary">
+              {activeError?.message || '仪表盘数据加载失败，请稍后重试'}
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                familyQuery.refetch();
+                refetch();
+              }}
+            >
+              重试
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   // 安全归一化：后端可能返回「非空但字段不全」的对象（例如 monthlyTrend / categoryBreakdown 为 undefined）。
