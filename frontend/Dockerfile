@@ -39,9 +39,9 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # 暴露端口
 EXPOSE 80
 
-# 健康检查
+# 健康检查（busybox wget 不支持 --spider，改用 -q -O /dev/null）
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
+  CMD wget -q -O /dev/null http://localhost:80/ || exit 1
 
 # 启动Nginx
 CMD ["nginx", "-g", "daemon off;"]
