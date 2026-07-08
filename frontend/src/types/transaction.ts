@@ -100,6 +100,8 @@ export interface UpdateTransactionRequest {
 export interface TransactionQueryParams {
   ledgerId?: string;
   categoryId?: string;
+  /** 功能C：按账户筛选交易 */
+  accountId?: string;
   type?: TransactionType;
   dateFrom?: string;
   dateTo?: string;

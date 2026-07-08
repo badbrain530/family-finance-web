@@ -135,6 +135,11 @@ export class TransactionsService {
       },
     });
 
+    // 同步更新关联账户余额（收入/支出按规则调整；信用卡相反）
+    if (dto.accountId) {
+      await this.adjustAccountBalance(dto.accountId, transaction.type, Number(transaction.amount), 1);
+    }
+
     // 发出事件：交易创建（WebSocket网关监听后广播给家庭成员）
     this.eventEmitter.emit('transaction.created', {
       transaction,
@@ -177,6 +182,10 @@ export class TransactionsService {
 
     if (query.categoryId) {
       where.categoryId = query.categoryId;
+    }
+
+    if (query.accountId) {
+      where.accountId = query.accountId;
     }
 
     if (query.type) {
@@ -341,6 +350,17 @@ export class TransactionsService {
       },
     });
 
+    // 校正关联账户余额：先撤销旧交易影响，再施加更新后影响
+    // （若账户/金额/类型未变，两次调用相互抵消，净影响为零，逻辑自洽）
+    const origType = transaction.type;
+    const origAmount = Number(transaction.amount);
+    const origAccountId = transaction.accountId;
+    const newType = (dto.type ? dto.type.toUpperCase() : origType) as 'INCOME' | 'EXPENSE' | 'TRANSFER';
+    const newAmount = dto.amount !== undefined ? dto.amount : origAmount;
+    const newAccountId = dto.accountId !== undefined ? dto.accountId : origAccountId;
+    await this.adjustAccountBalance(origAccountId, origType, origAmount, -1);
+    await this.adjustAccountBalance(newAccountId, newType, newAmount, 1);
+
     // 发出事件：交易更新
     this.eventEmitter.emit('transaction.updated', {
       transaction: updated,
@@ -360,6 +380,14 @@ export class TransactionsService {
    */
   async deleteTransaction(transactionId: string, userId: string): Promise<{ success: boolean }> {
     const transaction = await this.getTransaction(transactionId, userId);
+
+    // 删除时回滚关联账户余额（符号反向）
+    await this.adjustAccountBalance(
+      transaction.accountId,
+      transaction.type,
+      Number(transaction.amount),
+      -1,
+    );
 
     await this.prisma.transaction.delete({
       where: { id: transactionId },
@@ -447,6 +475,11 @@ export class TransactionsService {
       },
     });
 
+    // 同步更新关联账户余额
+    if (dto.accountId) {
+      await this.adjustAccountBalance(dto.accountId, transaction.type, Number(transaction.amount), 1);
+    }
+
     // 生成撤销令牌
     const undoToken = nanoid();
     undoTokenStore.set(undoToken, {
@@ -512,6 +545,14 @@ export class TransactionsService {
       // 验证权限
       await this.familiesService.validateFamilyMember(transaction.ledger.familyId, userId);
 
+      // 撤销时回滚关联账户余额（符号反向）
+      await this.adjustAccountBalance(
+        transaction.accountId,
+        transaction.type,
+        Number(transaction.amount),
+        -1,
+      );
+
       await this.prisma.transaction.delete({
         where: { id: tokenData.transactionId },
       });
@@ -531,6 +572,47 @@ export class TransactionsService {
     this.logger.log(`快捷记账撤销: transaction=${tokenData.transactionId}, by=${userId}`);
 
     return { success: true };
+  }
+
+  /**
+   * 交易创建/删除/更新时同步调整关联账户余额。
+   *
+   * 余额方向规则：
+   *  - 非信用卡账户：收入 → 余额增加(+)，支出 → 余额减少(-)
+   *  - 信用卡账户（balance 表示欠款）：支出 → 欠款增加(+)，收入/还款 → 欠款减少(-)
+   *  - transfer 类型：本次暂不处理（已知限制，避免引入 from/to 双账户复杂度）
+   *
+   * @param accountId 关联账户ID（空则跳过）
+   * @param type 交易类型（数据库大写：INCOME/EXPENSE/TRANSFER）
+   * @param amount 金额（number）
+   * @param direction 1=创建交易的影响，-1=删除/撤销/更新前的反向回滚
+   */
+  private async adjustAccountBalance(
+    accountId: string | null | undefined,
+    type: 'INCOME' | 'EXPENSE' | 'TRANSFER',
+    amount: number,
+    direction: 1 | -1,
+  ) {
+    if (!accountId || type === 'TRANSFER' || !amount) return;
+
+    const account = await this.prisma.account.findUnique({
+      where: { id: accountId },
+      select: { type: true, balance: true, creditLimit: true },
+    });
+    if (!account) return;
+
+    // 计算增量符号：非信用卡 base=收入+1/支出-1；信用卡整体取反
+    const base = type === 'INCOME' ? 1 : -1;
+    const sign = account.type === 'CREDIT' ? -base : base;
+    const current = account.balance != null ? Number(account.balance) : 0;
+    const newBalance = current + sign * direction * amount;
+
+    const data: { balance: number; availableCredit?: number } = { balance: newBalance };
+    // 信用卡同步重算可用额度 = 授信 - 欠款
+    if (account.type === 'CREDIT' && account.creditLimit != null) {
+      data.availableCredit = Number(account.creditLimit) - newBalance;
+    }
+    await this.prisma.account.update({ where: { id: accountId }, data });
   }
 
   // ==================== 批量操作 ====================

@@ -16,6 +16,7 @@ import { getAccounts } from '@/services/account.service';
 import { useToast } from '@/components/ui/toaster';
 import { Button } from '@/components/ui/button';
 import { AccountFormDrawer } from './AccountFormDrawer';
+import { AccountTransactionsDrawer } from './AccountTransactionsDrawer';
 import { ACCOUNT_TYPE_META, ACCOUNT_TYPE_ORDER } from '@/lib/constants';
 import { cn, formatCurrency } from '@/lib/utils';
 import { AccountType } from '@/types/account';
@@ -53,6 +54,9 @@ export function AccountsPage() {
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
+  // 功能C：点击账户查看其下交易流水
+  const [txAccount, setTxAccount] = useState<Account | null>(null);
+  const [txOpen, setTxOpen] = useState(false);
 
   // 加载家庭与账户
   const load = async () => {
@@ -179,7 +183,15 @@ export function AccountsPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {group.items.map((acc) => (
-                    <AccountCard key={acc.id} account={acc} onEdit={() => openEdit(acc)} />
+                    <AccountCard
+                      key={acc.id}
+                      account={acc}
+                      onEdit={() => openEdit(acc)}
+                      onView={() => {
+                        setTxAccount(acc);
+                        setTxOpen(true);
+                      }}
+                    />
                   ))}
                 </div>
               </section>
@@ -198,12 +210,27 @@ export function AccountsPage() {
           onSaved={load}
         />
       )}
+
+      {/* 功能C：账户交易流水抽屉 */}
+      <AccountTransactionsDrawer
+        account={txAccount}
+        open={txOpen}
+        onOpenChange={setTxOpen}
+      />
     </div>
   );
 }
 
 /** 单个账户卡片 */
-function AccountCard({ account, onEdit }: { account: Account; onEdit: () => void }) {
+function AccountCard({
+  account,
+  onEdit,
+  onView,
+}: {
+  account: Account;
+  onEdit: () => void;
+  onView: () => void;
+}) {
   const meta = ACCOUNT_TYPE_META[account.type];
   const Icon = ACCOUNT_ICONS[meta.icon] || Wallet;
   const subtitle =
@@ -220,22 +247,29 @@ function AccountCard({ account, onEdit }: { account: Account; onEdit: () => void
 
   return (
     <div
+      onClick={onView}
       className={cn(
-        'card relative group',
+        'card relative group cursor-pointer transition-shadow hover:shadow-md',
         !account.isActive && 'opacity-60',
       )}
     >
       {/* 操作按钮（hover 显示） */}
       <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
-          onClick={onEdit}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
           className="p-1.5 rounded-lg text-text-tertiary hover:text-primary-600 hover:bg-primary-50 transition-colors"
           title="编辑"
         >
           <Pencil size={15} />
         </button>
         <button
-          onClick={onEdit}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
           className={cn(
             'p-1.5 rounded-lg transition-colors',
             account.isActive

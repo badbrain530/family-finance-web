@@ -16,6 +16,11 @@ export class QueryTransactionDto {
   @IsString()
   readonly categoryId?: string;
 
+  /** 账户ID（功能C：按账户筛选交易） */
+  @IsOptional()
+  @IsString()
+  readonly accountId?: string;
+
   /** 交易类型 */
   @IsOptional()
   @IsIn(['income', 'expense', 'transfer'])

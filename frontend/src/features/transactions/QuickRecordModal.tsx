@@ -29,6 +29,8 @@ import { useToast } from '@/components/ui/toaster';
 import { quickRecord } from '@/services/transaction.service';
 import { getAccounts } from '@/services/account.service';
 import { getCurrentFamily } from '@/services/family.service';
+import { getLedgers } from '@/services/ledger.service';
+import { LedgerType } from '@/types/family';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import { TransactionType } from '@/types/transaction';
 import type { Account } from '@/types/account';
@@ -76,6 +78,9 @@ export function QuickRecordModal() {
   const [accountId, setAccountId] = useState('');
   const [accounts, setAccounts] = useState<Account[]>([]);
 
+  // 真实账本ID（Bug A：后端无 'current' 特殊解析，必须传真实账本ID）
+  const [ledgerId, setLedgerId] = useState('');
+
   // 打开时自动聚焦 + 加载账户
   useEffect(() => {
     if (quickRecordOpen) {
@@ -86,6 +91,11 @@ export function QuickRecordModal() {
           const family = await getCurrentFamily();
           const accs = await getAccounts(family.id);
           setAccounts(accs);
+          // Bug A 修复：加载真实账本列表，挑选一个真实账本ID（优先共享账本）
+          // 后端 getLedger 不会把 'current' 解析为默认账本，必须传真实 ID 否则记账 404
+          const ledgers = await getLedgers(family.id);
+          const target = ledgers.find((l) => l.type === LedgerType.SHARED) || ledgers[0];
+          setLedgerId(target?.id || '');
         } catch (err: any) {
           toast({ title: '加载账户失败', description: err?.message, variant: 'destructive' });
         }
@@ -100,6 +110,7 @@ export function QuickRecordModal() {
       setDate(formatDate(new Date(), 'yyyy-MM-dd'));
       setShowNLHint(true);
       setAccountId('');
+      setLedgerId('');
     }
   }, [quickRecordOpen]);
 
@@ -154,12 +165,21 @@ export function QuickRecordModal() {
       return;
     }
 
+    if (!ledgerId) {
+      toast({
+        title: '未找到可用账本',
+        description: '请先在账本管理中创建账本后再记账',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      // 调用快捷记账API
+      // 调用快捷记账API（使用真实账本ID，后端 getLedger 按 ID 精确查找）
       const result = await quickRecord({
         input: input || `${amount}元`,
-        ledgerId: 'current', // 后端会解析当前用户的默认账本
+        ledgerId,
         accountId,
       });
 
@@ -171,13 +191,12 @@ export function QuickRecordModal() {
 
       setQuickRecordOpen(false);
     } catch (err: any) {
-      // API失败时使用本地数据演示
+      // Bug A 修复：API 失败时如实报错，不得伪造"已记成功"
       toast({
-        title: '已记：快捷记账',
-        description: `${transactionType === TransactionType.EXPENSE ? '-' : '+'}${formatCurrency(parseFloat(amount))}`,
-        variant: 'success',
+        title: '记账失败',
+        description: err?.message || '请稍后重试',
+        variant: 'destructive',
       });
-      setQuickRecordOpen(false);
     } finally {
       setLoading(false);
     }
