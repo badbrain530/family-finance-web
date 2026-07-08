@@ -124,16 +124,23 @@ export function CategoriesManagePage() {
     }
     setSaving(true);
     try {
-      const payload: CreateCategoryRequest = {
-        name: formName.trim(),
-        parentId: selectedParent.id,
-        icon: formIcon,
-        color: formColor,
-      };
       if (editingCat) {
-        await updateCategory(editingCat.id, payload);
+        // 更新分类：不发送 parentId（后端 UpdateCategoryDto 未声明该字段，
+        // 会因 forbidNonWhitelisted 被拦截返回 400）。更新也不允许改父级。
+        const updatePayload: Partial<CreateCategoryRequest> = {
+          name: formName.trim(),
+          icon: formIcon,
+          color: formColor,
+        };
+        await updateCategory(editingCat.id, updatePayload);
         toast({ title: '分类已更新', variant: 'success' });
       } else {
+        const payload: CreateCategoryRequest = {
+          name: formName.trim(),
+          parentId: selectedParent.id,
+          icon: formIcon,
+          color: formColor,
+        };
         await createCategory(family.id, payload);
         toast({ title: '分类已添加', variant: 'success' });
       }
@@ -314,7 +321,11 @@ export function CategoriesManagePage() {
                 onChange={(e) => setFormName(e.target.value)}
                 placeholder="如：外卖、打车出行"
                 maxLength={20}
+                disabled={editingCat?.isSystem}
               />
+              {editingCat?.isSystem && (
+                <p className="text-xs text-text-tertiary">系统分类名称不可修改</p>
+              )}
             </div>
 
             <div className="space-y-1.5">

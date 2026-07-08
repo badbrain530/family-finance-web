@@ -15,6 +15,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     // 本目录下不应有其它测试文件，限制范围，避免误跑整个项目
-    include: ['src/features/dashboard/**/*.test.{ts,tsx}'],
+    include: [
+      'src/features/dashboard/**/*.test.{ts,tsx}',
+      'src/features/categories/**/*.test.{ts,tsx}',
+    ],
   },
 });
