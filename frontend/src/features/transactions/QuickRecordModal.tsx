@@ -16,6 +16,7 @@ import {
   Loader2,
   Sparkles,
   Wallet,
+  Plus,
 } from 'lucide-react';
 import {
   Select,
@@ -23,14 +24,17 @@ import {
   SelectValue,
   SelectContent,
   SelectItem,
+  SelectSeparator,
 } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/store/uiStore';
 import { useToast } from '@/components/ui/toaster';
 import { quickRecord } from '@/services/transaction.service';
 import { getAccounts } from '@/services/account.service';
 import { getCurrentFamily } from '@/services/family.service';
-import { getLedgers } from '@/services/ledger.service';
-import { LedgerType } from '@/types/family';
+import { getLedgers, createLedger } from '@/services/ledger.service';
+import { LedgerType, type Family, type Ledger } from '@/types/family';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import { TransactionType } from '@/types/transaction';
 import type { Account } from '@/types/account';
@@ -60,6 +64,9 @@ const NL_EXAMPLES = [
   '超市购物128.5',
 ];
 
+// 新建账本面板的特殊值（非真实账本ID）
+const CREATE_LEDGER_ITEM_VALUE = '__create_ledger__';
+
 export function QuickRecordModal() {
   const { quickRecordOpen, setQuickRecordOpen } = useUIStore();
   const { toast } = useToast();
@@ -78,8 +85,17 @@ export function QuickRecordModal() {
   const [accountId, setAccountId] = useState('');
   const [accounts, setAccounts] = useState<Account[]>([]);
 
-  // 真实账本ID（Bug A：后端无 'current' 特殊解析，必须传真实账本ID）
+  // 真实账本（Bug A：后端无 'current' 特殊解析，必须传真实账本ID）
+  const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [ledgerId, setLedgerId] = useState('');
+  // 账本面板模式：select=选择已有账本，create=在弹窗内直接新建账本
+  const [ledgerPanelMode, setLedgerPanelMode] = useState<'select' | 'create'>('select');
+  const [newLedgerName, setNewLedgerName] = useState('');
+  const [creatingLedger, setCreatingLedger] = useState(false);
+  const newLedgerInputRef = useRef<HTMLInputElement>(null);
+
+  // 缓存当前家庭，避免重复请求 getCurrentFamily
+  const familyRef = useRef<Family | null>(null);
 
   // 打开时自动聚焦 + 加载账户
   useEffect(() => {
@@ -89,13 +105,22 @@ export function QuickRecordModal() {
       (async () => {
         try {
           const family = await getCurrentFamily();
+          familyRef.current = family;
           const accs = await getAccounts(family.id);
           setAccounts(accs);
           // Bug A 修复：加载真实账本列表，挑选一个真实账本ID（优先共享账本）
           // 后端 getLedger 不会把 'current' 解析为默认账本，必须传真实 ID 否则记账 404
-          const ledgers = await getLedgers(family.id);
-          const target = ledgers.find((l) => l.type === LedgerType.SHARED) || ledgers[0];
+          const loaded = await getLedgers(family.id);
+          setLedgers(loaded);
+          // 无账本时直接进入"新建账本"面板，避免死路 toast
+          if (loaded.length === 0) {
+            setLedgerPanelMode('create');
+            setLedgerId('');
+            return;
+          }
+          const target = loaded.find((l) => l.type === LedgerType.SHARED) || loaded[0];
           setLedgerId(target?.id || '');
+          setLedgerPanelMode('select');
         } catch (err: any) {
           toast({ title: '加载账户失败', description: err?.message, variant: 'destructive' });
         }
@@ -110,7 +135,10 @@ export function QuickRecordModal() {
       setDate(formatDate(new Date(), 'yyyy-MM-dd'));
       setShowNLHint(true);
       setAccountId('');
+      setLedgers([]);
       setLedgerId('');
+      setLedgerPanelMode('select');
+      setNewLedgerName('');
     }
   }, [quickRecordOpen]);
 
@@ -145,6 +173,49 @@ export function QuickRecordModal() {
     }
   };
 
+  // 在弹窗内直接创建账本：创建后自动选中并回到选择模式
+  const handleCreateLedger = async () => {
+    const family = familyRef.current;
+    if (!family) {
+      toast({
+        title: '创建失败',
+        description: '未获取到家庭信息，请关闭弹窗后重试',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const name = newLedgerName.trim() || '家庭账本';
+    setCreatingLedger(true);
+    try {
+      const created = await createLedger(family.id, name, LedgerType.SHARED);
+      setLedgers((prev) => [...prev, created]);
+      setLedgerId(created.id);
+      setNewLedgerName('');
+      setLedgerPanelMode('select');
+      toast({
+        title: '账本已创建',
+        description: `已创建「${created.name}」并自动选中，可继续记账`,
+        variant: 'success',
+      });
+    } catch (err: any) {
+      toast({
+        title: '创建账本失败',
+        description: err?.message || '请稍后重试',
+        variant: 'destructive',
+      });
+    } finally {
+      setCreatingLedger(false);
+    }
+  };
+
+  // 新建账本输入框回车提交
+  const handleNewLedgerKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleCreateLedger();
+    }
+  };
+
   // 提交快捷记账
   const handleSubmit = async () => {
     if (!amount || parseFloat(amount) <= 0) {
@@ -165,12 +236,23 @@ export function QuickRecordModal() {
       return;
     }
 
+    // 账本守卫：无账本时引导在弹窗内创建，不再指向不存在的"账本管理"页
     if (!ledgerId) {
-      toast({
-        title: '未找到可用账本',
-        description: '请先在账本管理中创建账本后再记账',
-        variant: 'destructive',
-      });
+      if (ledgers.length > 0) {
+        toast({
+          title: '请选择账本',
+          description: '请选择要记账的账本',
+          variant: 'destructive',
+        });
+      } else {
+        setLedgerPanelMode('create');
+        setTimeout(() => newLedgerInputRef.current?.focus(), 100);
+        toast({
+          title: '还没有账本',
+          description: '请在下方输入账本名称并点击"创建账本"，即可继续记账',
+          variant: 'destructive',
+        });
+      }
       return;
     }
 
@@ -320,6 +402,88 @@ export function QuickRecordModal() {
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        {/* 账本选择（无账本时可在弹窗内直接创建，避免死路） */}
+        <div className="px-6 pb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <BookOpen size={14} className="text-primary" />
+            <span className="text-xs font-medium text-text-secondary">选择账本</span>
+          </div>
+
+          {ledgerPanelMode === 'create' ? (
+            <div className="rounded-lg border border-dashed border-primary/40 bg-primary-50/30 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <BookOpen size={14} className="text-primary" />
+                <span className="text-sm font-medium text-text-primary">
+                  {ledgers.length > 0 ? '新建账本' : '还没有账本'}
+                </span>
+              </div>
+              <p className="text-xs text-text-tertiary mb-3">
+                创建账本后即可记账，账本用于归类家庭收支。
+              </p>
+              <div className="flex items-center gap-2">
+                <Input
+                  ref={newLedgerInputRef}
+                  value={newLedgerName}
+                  onChange={(e) => setNewLedgerName(e.target.value)}
+                  onKeyDown={handleNewLedgerKeyDown}
+                  placeholder="家庭账本"
+                  className="flex-1"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleCreateLedger}
+                  disabled={creatingLedger}
+                >
+                  {creatingLedger ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Plus size={14} />
+                  )}
+                  创建账本
+                </Button>
+              </div>
+              {ledgers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setLedgerPanelMode('select')}
+                  className="mt-2 text-xs text-text-tertiary hover:text-primary-600 transition-colors"
+                >
+                  返回选择已有账本
+                </button>
+              )}
+            </div>
+          ) : (
+            <Select value={ledgerId} onValueChange={setLedgerId}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="请选择账本" />
+              </SelectTrigger>
+              <SelectContent>
+                {ledgers.map((ledger) => (
+                  <SelectItem key={ledger.id} value={ledger.id}>
+                    {ledger.name}
+                    {ledger.type === LedgerType.PERSONAL ? '（个人）' : ''}
+                  </SelectItem>
+                ))}
+                {ledgers.length > 0 && <SelectSeparator />}
+                <SelectItem
+                  value={CREATE_LEDGER_ITEM_VALUE}
+                  onSelect={(e) => {
+                    // 阻止切换实际账本值，改为打开"新建账本"面板
+                    e.preventDefault();
+                    setLedgerPanelMode('create');
+                    setTimeout(() => newLedgerInputRef.current?.focus(), 100);
+                  }}
+                >
+                  <span className="flex items-center gap-1 text-primary-600">
+                    <Plus size={14} />
+                    新建账本
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         {/* 分类网格 */}

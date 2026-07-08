@@ -10,10 +10,14 @@ import {
   Wallet,
   TrendingUp,
   TrendingDown,
+  BookOpen,
+  Plus,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Avatar } from '@/components/ui/avatar';
 import {
   Table,
@@ -27,13 +31,15 @@ import { AmountText } from '@/components/common/AmountText';
 import { CategoryTag } from '@/components/common/CategoryTag';
 import { useToast } from '@/components/ui/toaster';
 import { useAuthStore } from '@/store/authStore';
+import { getCurrentFamily } from '@/services/family.service';
+import { getLedgers, createLedger } from '@/services/ledger.service';
 import { cn, formatCurrency, formatDate, copyToClipboard } from '@/lib/utils';
-import { MemberRole } from '@/types/family';
+import { MemberRole, LedgerType } from '@/types/family';
 import type { Transaction, TransactionType } from '@/types/transaction';
 
 /**
  * 家庭账本页面
- * 成员卡片 + 共享收支表格 + 邀请成员
+ * 成员卡片 + 共享收支表格 + 邀请成员 + 真实账本管理
  */
 
 // 角色配置
@@ -57,6 +63,28 @@ export function FamilyLedgerPage() {
       return { members: [], transactions: [] };
     },
   });
+
+  // 当前家庭（用于真实账本管理）
+  const { data: family, isLoading: familyLoading } = useQuery({
+    queryKey: ['currentFamily'],
+    queryFn: () => getCurrentFamily(),
+  });
+
+  // 真实账本列表（命中后端 /api/ledgers?familyId=xxx）
+  const {
+    data: ledgers,
+    isLoading: ledgersLoading,
+    refetch: refetchLedgers,
+  } = useQuery({
+    queryKey: ['ledgers', family?.id],
+    queryFn: () => getLedgers(family!.id),
+    enabled: !!family?.id,
+  });
+
+  // 账本新建相关状态
+  const [showCreateInput, setShowCreateInput] = useState(false);
+  const [newLedgerName, setNewLedgerName] = useState('');
+  const [creatingLedger, setCreatingLedger] = useState(false);
 
   // 暂用常量（后续移除）
   const mockMembers = [
@@ -82,6 +110,39 @@ export function FamilyLedgerPage() {
         description: '分享给家人，注册后输入即可加入',
         variant: 'success',
       });
+    }
+  };
+
+  // 新建账本
+  const handleCreateLedger = async () => {
+    if (!family) {
+      toast({
+        title: '无法创建',
+        description: '未获取到家庭信息，请刷新后重试',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const name = newLedgerName.trim() || '家庭账本';
+    setCreatingLedger(true);
+    try {
+      await createLedger(family.id, name, LedgerType.SHARED);
+      setNewLedgerName('');
+      setShowCreateInput(false);
+      await refetchLedgers();
+      toast({
+        title: '账本已创建',
+        description: `已创建「${name}」`,
+        variant: 'success',
+      });
+    } catch (err: any) {
+      toast({
+        title: '创建账本失败',
+        description: err?.message || '请稍后重试',
+        variant: 'destructive',
+      });
+    } finally {
+      setCreatingLedger(false);
     }
   };
 
@@ -142,6 +203,82 @@ export function FamilyLedgerPage() {
           </p>
         </Card>
       </div>
+
+      {/* 我的账本（真实账本管理，避免引用不存在的"账本管理"页） */}
+      <Card className="mb-6">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <BookOpen size={16} className="text-primary" />
+            我的账本
+          </CardTitle>
+          {!showCreateInput && (
+            <Button size="sm" variant="outline" onClick={() => setShowCreateInput(true)}>
+              <Plus size={14} />
+              新建账本
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="p-0">
+          {familyLoading || ledgersLoading ? (
+            <div className="px-6 py-8 flex items-center justify-center gap-2 text-sm text-text-tertiary">
+              <Loader2 size={14} className="animate-spin" />
+              加载中…
+            </div>
+          ) : ledgers && ledgers.length > 0 ? (
+            <ul className="divide-y divide-border">
+              {ledgers.map((ledger) => (
+                <li key={ledger.id} className="px-6 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <BookOpen size={14} className="text-text-tertiary" />
+                    <span className="text-sm text-text-primary">{ledger.name}</span>
+                  </div>
+                  <Badge variant={ledger.type === LedgerType.SHARED ? 'default' : 'secondary'}>
+                    {ledger.type === LedgerType.SHARED ? '共享' : '个人'}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="px-6 py-8 text-center">
+              <p className="text-sm text-text-secondary mb-1">还没有账本</p>
+              <p className="text-xs text-text-tertiary mb-4">创建账本后即可在快捷记账中使用</p>
+              <Button size="sm" onClick={() => setShowCreateInput(true)}>
+                <Plus size={14} />
+                新建账本
+              </Button>
+            </div>
+          )}
+
+          {showCreateInput && (
+            <div className="px-6 py-4 border-t border-border flex items-center gap-2">
+              <Input
+                value={newLedgerName}
+                onChange={(e) => setNewLedgerName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateLedger();
+                }}
+                placeholder="家庭账本"
+                className="flex-1"
+                autoFocus
+              />
+              <Button size="sm" onClick={handleCreateLedger} disabled={creatingLedger}>
+                {creatingLedger ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                创建
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setShowCreateInput(false);
+                  setNewLedgerName('');
+                }}
+              >
+                取消
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* 成员卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
