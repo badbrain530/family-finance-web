@@ -7,7 +7,7 @@ import {
 import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FamiliesService } from '../families/families.service';
-import { CreateCategoryDto, UpdateCategoryDto } from './dto/create-category.dto';
+import { CreateCategoryDto, UpdateCategoryDto, ReorderCategoriesDto } from './dto/create-category.dto';
 
 /**
  * 国标默认分类体系
@@ -260,11 +260,7 @@ export class CategoriesService {
     // 验证权限
     await this.familiesService.validateFamilyMember(category.familyId, userId);
 
-    // 系统分类的名称不能修改
-    if (category.isSystem && dto.name !== undefined && dto.name !== category.name) {
-      throw new BadRequestException('系统默认分类名称不能修改');
-    }
-
+    // 注意：系统分类名称现在允许修改（放开历史限制）。其余校验保持不变。
     const updateData: Record<string, unknown> = {};
     if (dto.name !== undefined) updateData.name = dto.name;
     if (dto.icon !== undefined) updateData.icon = dto.icon;
@@ -275,6 +271,46 @@ export class CategoriesService {
       where: { id: categoryId },
       data: updateData,
     });
+  }
+
+  /**
+   * 重排序分类
+   * 批量、原子地更新每个分类的 sortOrder
+   * @param familyId 家庭ID
+   * @param userId 操作者用户ID
+   * @param dto 重排序 DTO（含 familyId 与 items: [{id, sortOrder}]）
+   * @returns 操作结果
+   */
+  async reorderCategories(
+    familyId: string,
+    userId: string,
+    dto: ReorderCategoriesDto,
+  ): Promise<{ success: boolean }> {
+    // 校验权限
+    await this.familiesService.validateFamilyMember(familyId, userId);
+
+    const ids = dto.items.map((item) => item.id);
+
+    // 校验这些分类都属于该家庭，防止越权修改其它家庭的 sortOrder
+    const owned = await this.prisma.category.findMany({
+      where: { id: { in: ids }, familyId },
+      select: { id: true },
+    });
+    if (owned.length !== ids.length) {
+      throw new BadRequestException('存在不属于该家庭的分类，排序失败');
+    }
+
+    // 批量原子提交：逐项更新 sortOrder
+    await this.prisma.$transaction(
+      dto.items.map((item) =>
+        this.prisma.category.update({
+          where: { id: item.id },
+          data: { sortOrder: item.sortOrder },
+        }),
+      ),
+    );
+
+    return { success: true };
   }
 
   /**

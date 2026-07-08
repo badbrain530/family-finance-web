@@ -1,4 +1,15 @@
-import { IsNotEmpty, IsString, MinLength, MaxLength, IsOptional, IsInt } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  MinLength,
+  MaxLength,
+  IsOptional,
+  IsInt,
+  IsArray,
+  ArrayNotEmpty,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 /**
  * 创建分类DTO
@@ -58,4 +69,35 @@ export class UpdateCategoryDto {
   @IsOptional()
   @IsInt()
   readonly sortOrder?: number;
+}
+
+/**
+ * 重排序单项
+ * 对应前端 ReorderCategoriesRequest.items 的元素结构 { id, sortOrder }
+ */
+export class ReorderCategoryItemDto {
+  /** 分类ID */
+  @IsString()
+  readonly id: string;
+
+  /** 排序序号（整数） */
+  @IsInt()
+  readonly sortOrder: number;
+}
+
+/**
+ * 重排序分类DTO
+ * body 同时携带 familyId（与前端 ReorderCategoriesRequest 保持一致，避免 forbidNonWhitelisted 拦截）
+ */
+export class ReorderCategoriesDto {
+  /** 家庭ID */
+  @IsString()
+  readonly familyId: string;
+
+  /** 排序后的分类项列表（含 id 与 sortOrder） */
+  @IsArray()
+  @ArrayNotEmpty()
+  @Type(() => ReorderCategoryItemDto)
+  @ValidateNested({ each: true })
+  readonly items: ReorderCategoryItemDto[];
 }

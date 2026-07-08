@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
-import { CreateCategoryDto, UpdateCategoryDto } from './dto/create-category.dto';
+import { CreateCategoryDto, UpdateCategoryDto, ReorderCategoriesDto } from './dto/create-category.dto';
 
 /**
  * 分类控制器
@@ -33,6 +33,19 @@ export class CategoriesController {
     @Body() dto: CreateCategoryDto,
   ) {
     return this.categoriesService.createCategory(user.userId, dto);
+  }
+
+  /**
+   * 重排序分类
+   * PUT /api/categories/reorder
+   * 注意：必须声明在 @Put(':id') 之前，避免被 ':id' 路由捕获 'reorder'
+   */
+  @Put('reorder')
+  async reorderCategories(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ReorderCategoriesDto,
+  ) {
+    return this.categoriesService.reorderCategories(dto.familyId, user.userId, dto);
   }
 
   /**

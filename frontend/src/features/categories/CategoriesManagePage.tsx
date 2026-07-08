@@ -1,5 +1,25 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Plus, Pencil, Trash2, Lock, Sparkles } from 'lucide-react';
+import { useState, useEffect, useMemo, type ReactNode, type CSSProperties } from 'react';
+import { Plus, Pencil, Trash2, Lock, Sparkles, GripVertical } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  rectSortingStrategy,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { getCurrentFamily } from '@/services/family.service';
 import {
   getCategories,
@@ -7,6 +27,7 @@ import {
   updateCategory,
   deleteCategory,
   initCategories,
+  reorderCategories,
 } from '@/services/category.service';
 import { useToast } from '@/components/ui/toaster';
 import { Button } from '@/components/ui/button';
@@ -34,6 +55,37 @@ const LUCIDE_ICON_OPTIONS = [
   'Film', 'Dumbbell', 'Map', 'Pill', 'GraduationCap', 'Briefcase', 'TrendingUp',
   'Smartphone', 'Zap', 'CreditCard', 'Banknote', 'PiggyBank', 'MoreHorizontal',
 ];
+
+/**
+ * 可拖拽排序容器：负责把 useSortable 的 ref/样式/拖拽手柄属性暴露给子元素。
+ * 拖拽手柄由子元素自行渲染（拿到 attributes/listeners 绑定到手柄按钮），
+ * 从而把「拖拽」与「点击/编辑」区域解耦，避免拖拽时误触发编辑弹窗。
+ */
+function SortableWrapper({
+  id,
+  children,
+}: {
+  id: string;
+  children: (handle: {
+    attributes: DraggableAttributes;
+    listeners: DraggableSyntheticListeners;
+  }) => ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} data-draggable={id}>
+      {children({ attributes, listeners })}
+    </div>
+  );
+}
 
 /**
  * 分类管理页
@@ -84,6 +136,72 @@ export function CategoriesManagePage() {
     () => categories.find((c) => c.id === selectedId) || categories[0] || null,
     [categories, selectedId],
   );
+
+  // 拖拽：仅当指针移动超过 5px 才视为拖拽，避免与点击/编辑冲突；
+  // 同时启用键盘传感器，兼顾无障碍与可测试性
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  /**
+   * 乐观更新 + 回滚。
+   * optimistic 先更新本地顺序；保存成功则保持，失败则回滚快照并提示。
+   */
+  const persistReorder = async (
+    items: Array<{ id: string; sortOrder: number }>,
+    optimistic: () => void,
+    rollback: () => void,
+  ) => {
+    if (!family) return;
+    optimistic();
+    try {
+      await reorderCategories(family.id, { items });
+    } catch (err: any) {
+      rollback();
+      toast({ title: '排序保存失败', description: err?.message, variant: 'destructive' });
+    }
+  };
+
+  const handleLevel1DragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = categories.findIndex((c) => c.id === active.id);
+    const newIndex = categories.findIndex((c) => c.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const snapshot = categories;
+    const reordered = arrayMove(categories, oldIndex, newIndex);
+    const items = reordered.map((c, idx) => ({ id: c.id, sortOrder: idx }));
+    persistReorder(
+      items,
+      () => setCategories(reordered),
+      () => setCategories(snapshot),
+    );
+  };
+
+  const handleLevel2DragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !selectedParent) return;
+    const children = selectedParent.children ?? [];
+    const oldIndex = children.findIndex((c) => c.id === active.id);
+    const newIndex = children.findIndex((c) => c.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const snapshot = children;
+    const parentId = selectedParent.id;
+    const reordered = arrayMove(children, oldIndex, newIndex);
+    const items = reordered.map((c, idx) => ({ id: c.id, sortOrder: idx }));
+    persistReorder(
+      items,
+      () =>
+        setCategories((prev) =>
+          prev.map((c) => (c.id === parentId ? { ...c, children: reordered } : c)),
+        ),
+      () =>
+        setCategories((prev) =>
+          prev.map((c) => (c.id === parentId ? { ...c, children: snapshot } : c)),
+        ),
+    );
+  };
 
   const handleInit = async () => {
     if (!family) return;
@@ -211,33 +329,67 @@ export function CategoriesManagePage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-6">
-        {/* 左侧：一级分类列表 */}
+        {/* 左侧：一级分类列表（可拖拽排序） */}
         <div className="card p-3 h-fit">
           <div className="text-xs text-text-tertiary px-2 py-1">一级分类（{categories.length}）</div>
-          <div className="space-y-1 mt-1">
-            {categories.map((cat) => {
-              const Glyph = getCategoryIcon(cat.icon);
-              const active = selectedParent?.id === cat.id;
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedId(cat.id)}
-                  className={cn(
-                    'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
-                    active
-                      ? 'bg-primary-50 text-primary-600 font-semibold'
-                      : 'text-text-secondary hover:bg-primary-50/50',
-                  )}
-                >
-                  <Glyph size={16} color={cat.color} />
-                  <span className="truncate">{cat.name}</span>
-                  <span className="ml-auto text-xs text-text-tertiary">
-                    {cat.children?.length || 0}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleLevel1DragEnd}
+          >
+            <SortableContext
+              items={categories.map((c) => c.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-1 mt-1">
+                {categories.map((cat) => {
+                  const Glyph = getCategoryIcon(cat.icon);
+                  const active = selectedParent?.id === cat.id;
+                  return (
+                    <SortableWrapper key={cat.id} id={cat.id}>
+                      {({ attributes, listeners }) => (
+                        <div
+                          className={cn(
+                            'w-full flex items-center gap-1.5 px-2 py-2 rounded-lg text-sm transition-colors',
+                            active
+                              ? 'bg-primary-50 text-primary-600 font-semibold'
+                              : 'text-text-secondary hover:bg-primary-50/50',
+                          )}
+                        >
+                          <button
+                            {...attributes}
+                            {...listeners}
+                            className="cursor-grab active:cursor-grabbing text-text-tertiary shrink-0 touch-none"
+                            title="拖拽排序"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <GripVertical size={14} />
+                          </button>
+                          <button
+                            className="flex-1 flex items-center gap-2.5 min-w-0"
+                            onClick={() => setSelectedId(cat.id)}
+                          >
+                            <Glyph size={16} color={cat.color} />
+                            <span className="truncate">{cat.name}</span>
+                            <span className="ml-auto text-xs text-text-tertiary">
+                              {cat.children?.length || 0}
+                            </span>
+                          </button>
+                          <button
+                            onClick={() => openEdit(cat)}
+                            className="p-1 rounded text-text-tertiary hover:text-primary-600 hover:bg-primary-50 shrink-0"
+                            title="编辑"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        </div>
+                      )}
+                    </SortableWrapper>
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
         </div>
 
         {/* 右侧：二级分类网格 */}
@@ -252,57 +404,78 @@ export function CategoriesManagePage() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {selectedParent?.children?.map((child) => {
-              const Glyph = getCategoryIcon(child.icon);
-              return (
-                <div
-                  key={child.id}
-                  className="group relative flex items-center gap-3 p-3 rounded-lg border border-border bg-surface hover:border-primary/30 transition-colors"
-                >
-                  <div
-                    className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: child.color + '20' }}
-                  >
-                    <Glyph size={18} color={child.color} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-text-primary truncate">{child.name}</div>
-                    {child.isSystem && (
-                      <div className="text-xs text-text-tertiary flex items-center gap-1">
-                        <Lock size={10} /> 系统
-                      </div>
-                    )}
-                  </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleLevel2DragEnd}
+          >
+            <SortableContext
+              items={(selectedParent?.children ?? []).map((c) => c.id)}
+              strategy={rectSortingStrategy}
+            >
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {selectedParent?.children?.map((child) => {
+                  const Glyph = getCategoryIcon(child.icon);
+                  return (
+                    <SortableWrapper key={child.id} id={child.id}>
+                      {({ attributes, listeners }) => (
+                        <div className="group relative flex items-center gap-3 p-3 rounded-lg border border-border bg-surface hover:border-primary/30 transition-colors">
+                          <button
+                            {...attributes}
+                            {...listeners}
+                            className="cursor-grab active:cursor-grabbing text-text-tertiary shrink-0 touch-none"
+                            title="拖拽排序"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <GripVertical size={14} />
+                          </button>
+                          <div
+                            className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: child.color + '20' }}
+                          >
+                            <Glyph size={18} color={child.color} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-text-primary truncate">{child.name}</div>
+                            {child.isSystem && (
+                              <div className="text-xs text-text-tertiary flex items-center gap-1">
+                                <Lock size={10} /> 系统
+                              </div>
+                            )}
+                          </div>
 
-                  {/* 操作 */}
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => openEdit(child)}
-                      className="p-1 rounded text-text-tertiary hover:text-primary-600 hover:bg-primary-50"
-                      title="编辑"
-                    >
-                      <Pencil size={13} />
-                    </button>
-                    {!child.isSystem && (
-                      <button
-                        onClick={() => handleDelete(child)}
-                        className="p-1 rounded text-text-tertiary hover:text-expense hover:bg-expense/5"
-                        title="删除"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
+                          {/* 操作 */}
+                          <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => openEdit(child)}
+                              className="p-1 rounded text-text-tertiary hover:text-primary-600 hover:bg-primary-50"
+                              title="编辑"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            {!child.isSystem && (
+                              <button
+                                onClick={() => handleDelete(child)}
+                                className="p-1 rounded text-text-tertiary hover:text-expense hover:bg-expense/5"
+                                title="删除"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </SortableWrapper>
+                  );
+                })}
+                {(!selectedParent?.children || selectedParent.children.length === 0) && (
+                  <div className="col-span-full text-sm text-text-tertiary py-8 text-center">
+                    暂无二级分类，点击右上角"新增二级分类"
                   </div>
-                </div>
-              );
-            })}
-            {(!selectedParent?.children || selectedParent.children.length === 0) && (
-              <div className="col-span-full text-sm text-text-tertiary py-8 text-center">
-                暂无二级分类，点击右上角"新增二级分类"
+                )}
               </div>
-            )}
-          </div>
+            </SortableContext>
+          </DndContext>
         </div>
       </div>
 
@@ -321,11 +494,7 @@ export function CategoriesManagePage() {
                 onChange={(e) => setFormName(e.target.value)}
                 placeholder="如：外卖、打车出行"
                 maxLength={20}
-                disabled={editingCat?.isSystem}
               />
-              {editingCat?.isSystem && (
-                <p className="text-xs text-text-tertiary">系统分类名称不可修改</p>
-              )}
             </div>
 
             <div className="space-y-1.5">
