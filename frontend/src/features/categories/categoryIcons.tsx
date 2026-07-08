@@ -8,9 +8,14 @@
  * - viewBox 0 0 48 48
  * - stroke=currentColor、strokeWidth 2.5、圆角端点 / 连接
  * - 单个来源配色：颜色由使用方通过 color 传入，对应 categoryIconMeta.ts 的 ICON_COLOR
+ *
+ * 双轨解析：getCategoryIcon 既支持 25 个设计师 key，也支持任意 lucide 图标名，
+ * 未命中时回退到 lucide Circle，避免白屏。
  */
 import type { ReactNode } from 'react';
-import { LEGACY_ICON_MAP, type CategoryIconKey } from './categoryIconMeta';
+import type { LucideIcon } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
+import { ALL_ICON_KEYS, type CategoryIconKey } from './categoryIconMeta';
 
 /** 图标组件公共入参 */
 export interface GlyphProps {
@@ -19,7 +24,7 @@ export interface GlyphProps {
   className?: string;
 }
 
-/** 分类图标组件类型 */
+/** 分类图标组件类型（设计师新 glyph） */
 export type CategoryGlyph = (props: GlyphProps) => JSX.Element;
 
 /** 公共 SVG 外壳：统一 48×48 坐标、currentColor 描边、2.5 圆角 */
@@ -282,22 +287,39 @@ export const categoryIcons: Record<CategoryIconKey, CategoryGlyph> = {
 };
 
 /**
- * 根据图标 key（或旧 lucide 名）获取分类图标组件。
- * 解析顺序：
- *   1. 直接命中 25 key → 返回对应 glyph
- *   2. 命中 LEGACY_ICON_MAP 旧名 → 返回映射后的 glyph
- *   3. 均未命中 → 回退到 other glyph，并在开发环境打印告警（避免白屏）
+ * 双轨解析分类图标：
+ *   1. 命中 25 个设计师 key（CategoryIconKey）→ 返回对应新 glyph
+ *   2. 否则视为 lucide 图标名 → 从 lucide-react 动态取同名组件
+ *   3. 均未命中 → 回退到 lucide Circle，避免白屏
+ *
+ * 返回类型统一为 LucideIcon（设计师 glyph 做类型断言以兼容），
+ * 调用方（CategoryIcon / 列表渲染）无需区分来源，统一使用 size/color/className。
  */
-export function getCategoryIcon(key: string): CategoryGlyph {
-  if (key && key in categoryIcons) {
-    return categoryIcons[key as CategoryIconKey];
+export function getCategoryIcon(key: string): LucideIcon {
+  // 1. 设计师新图标 key
+  if (ALL_ICON_KEYS.includes(key as CategoryIconKey)) {
+    return categoryIcons[key as CategoryIconKey] as unknown as LucideIcon;
   }
-  const legacy = LEGACY_ICON_MAP[key];
-  if (legacy) {
-    return categoryIcons[legacy];
+  // 2. 经典 lucide 图标名（兼容 kebab-case 与 bare-lowercase 历史/未来数据，统一归一化为 PascalCase）
+  //    - 含连字符：逐段首字母大写（utensils 不适用，shopping-bag -> ShoppingBag）
+  //    - 无连字符：首字母直接大写（utensils -> Utensils，对已是 PascalCase 的 Wallet/Zap 幂等）
+  const pascalKey = key.includes('-')
+    ? key.split('-').map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join('')
+    : key.charAt(0).toUpperCase() + key.slice(1);
+  const LucideComp = (LucideIcons as Record<string, unknown>)[pascalKey];
+  // lucide 图标在 React 中多数是 forwardRef/memo 对象（typeof === 'object'），
+  // 兼容函数组件与对象组件两种形态，命中有效组件即返回，否则进入 Circle 兜底
+  if (
+    LucideComp &&
+    (typeof LucideComp === 'function' ||
+      (typeof LucideComp === 'object' &&
+        (LucideComp as { $$typeof?: unknown }).$$typeof != null))
+  ) {
+    return LucideComp as LucideIcon;
   }
+  // 3. 兜底，避免白屏
   if (import.meta.env.DEV) {
-    console.warn('[categoryIcon] unknown icon key:', key);
+    console.warn('[categoryIcon] unknown icon key, fallback to Circle:', key);
   }
-  return categoryIcons.other;
+  return LucideIcons.Circle;
 }

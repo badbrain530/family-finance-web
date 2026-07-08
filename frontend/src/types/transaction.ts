@@ -24,8 +24,9 @@ export interface Category {
   parentId: string | null;
   name: string;
   /**
-   * 分类图标 key（见 features/categories/categoryIconMeta.ts 的 CategoryIconKey），
-   * 例如 'dining' / 'transport' / 'other'。前端通过 getCategoryIcon(key) 渲染对应内联 SVG。
+   * 分类图标。可存 lucide 图标名（如 'utensils'）或设计师图标 key（见
+   * features/categories/categoryIconMeta.ts 的 CategoryIconKey，如 'dining'）。
+   * 前端统一经 CategoryIcon / getCategoryIcon 双轨解析为对应渲染组件。
    */
   icon: string;
   color: string;
@@ -134,7 +135,7 @@ export interface BatchClassifyRequest {
 export interface CreateCategoryRequest {
   name: string;
   parentId?: string;
-  /** 图标 key（见 CategoryIconKey），如 'dining'。存库即该字符串。 */
+  /** 图标。可存 lucide 图标名或设计师图标 key（见 categoryIconMeta.ts 的 CategoryIconKey），由 CategoryIcon/getCategoryIcon 解析 */
   icon: string;
   color: string;
 }

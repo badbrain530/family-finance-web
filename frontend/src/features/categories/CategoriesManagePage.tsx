@@ -26,8 +26,14 @@ import { getCategoryIcon } from '@/features/categories/categoryIcons';
 import { ALL_ICON_KEYS, ICON_COLOR } from '@/features/categories/categoryIconMeta';
 import { CategoryIcon } from '@/components/common/CategoryIcon';
 
-/** 可选图标（基于 25 个分类图标 key，顺序见 ALL_ICON_KEYS） */
-const ICON_OPTIONS = ALL_ICON_KEYS;
+/** 分组 A：设计师新图标（25 个分类图标 key，顺序见 ALL_ICON_KEYS） */
+// 分组 B：经典 lucide 图标名（PascalCase，与默认分类数据 icon 约定一致；存储即 PascalCase）
+const LUCIDE_ICON_OPTIONS = [
+  'Utensils', 'Car', 'Home', 'ShoppingBag', 'BookOpen', 'HeartPulse',
+  'Gamepad', 'Users', 'Shield', 'Wallet', 'Coffee', 'Gift', 'Plane',
+  'Film', 'Dumbbell', 'Map', 'Pill', 'GraduationCap', 'Briefcase', 'TrendingUp',
+  'Smartphone', 'Zap', 'CreditCard', 'Banknote', 'PiggyBank', 'MoreHorizontal',
+];
 
 /**
  * 分类管理页
@@ -313,25 +319,57 @@ export function CategoriesManagePage() {
 
             <div className="space-y-1.5">
               <Label>图标（颜色随图标自动匹配）</Label>
-              <div className="grid grid-cols-8 gap-1.5 max-h-32 overflow-y-auto pr-1">
-                {ICON_OPTIONS.map((ic) => (
-                  <button
-                    key={ic}
-                    type="button"
-                    onClick={() => {
-                      setFormIcon(ic);
-                      setFormColor(ICON_COLOR[ic]);
-                    }}
-                    className={cn(
-                      'w-9 h-9 rounded-lg flex items-center justify-center border transition-colors',
-                      formIcon === ic
-                        ? 'border-primary bg-primary-50 text-primary-600'
-                        : 'border-border text-text-secondary hover:border-primary/30',
-                    )}
-                  >
-                    <CategoryIcon iconKey={ic} size={16} />
-                  </button>
-                ))}
+
+              {/* 分组 A：设计师新图标（放大、留白充足） */}
+              <div className="mb-3">
+                <div className="text-xs text-text-tertiary mb-1.5">设计师新图标</div>
+                <div className="grid grid-cols-7 gap-2 max-h-44 overflow-y-auto pr-1">
+                  {ALL_ICON_KEYS.map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      aria-label={k}
+                      onClick={() => {
+                        setFormIcon(k);
+                        setFormColor(ICON_COLOR[k]);
+                      }}
+                      className={cn(
+                        'w-12 h-12 rounded-lg flex items-center justify-center border transition-colors',
+                        formIcon === k
+                          ? 'border-primary bg-primary-50 text-primary-600 ring-2 ring-primary/40'
+                          : 'border-border text-text-secondary hover:border-primary/30',
+                      )}
+                    >
+                      <CategoryIcon iconKey={k} size={30} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 分组 B：经典图标 (Lucide) */}
+              <div>
+                <div className="text-xs text-text-tertiary mb-1.5">经典图标 (Lucide)</div>
+                <div className="grid grid-cols-8 gap-1.5 max-h-32 overflow-y-auto pr-1">
+                  {LUCIDE_ICON_OPTIONS.map((ic) => (
+                    <button
+                      key={ic}
+                      type="button"
+                      aria-label={ic}
+                      onClick={() => {
+                        // 选中经典 lucide 图标时保留当前分类原有 color，不强制改
+                        setFormIcon(ic);
+                      }}
+                      className={cn(
+                        'w-9 h-9 rounded-lg flex items-center justify-center border transition-colors',
+                        formIcon === ic
+                          ? 'border-primary bg-primary-50 text-primary-600 ring-2 ring-primary/40'
+                          : 'border-border text-text-secondary hover:border-primary/30',
+                      )}
+                    >
+                      <CategoryIcon iconKey={ic} size={26} />
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

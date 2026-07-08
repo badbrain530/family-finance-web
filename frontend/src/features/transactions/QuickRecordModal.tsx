@@ -5,13 +5,18 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Utensils,
+  Car,
+  Home,
+  ShoppingBag,
+  BookOpen,
+  HeartPulse,
   Zap,
   Send,
   Loader2,
   Sparkles,
   Wallet,
 } from 'lucide-react';
-import { CategoryIcon } from '@/components/common/CategoryIcon';
 import {
   Select,
   SelectTrigger,
@@ -35,14 +40,14 @@ import type { Account } from '@/types/account';
  * 大字号金额输入，6类分类网格卡片
  */
 
-// 快速分类配置（icon 为图标 key，见 categoryIconMeta.ts 的 CategoryIconKey）
+// 快速分类配置
 const QUICK_CATEGORIES = [
-  { id: 'food', name: '餐饮', icon: 'dining', color: '#F97316' },
-  { id: 'transport', name: '交通', icon: 'transport', color: '#0EA5E9' },
-  { id: 'housing', name: '居住', icon: 'home', color: '#8B5CF6' },
-  { id: 'shopping', name: '购物', icon: 'shopping', color: '#EC4899' },
-  { id: 'education', name: '教育', icon: 'education', color: '#14B8A6' },
-  { id: 'health', name: '医疗', icon: 'medical', color: '#10B981' },
+  { id: 'food', name: '餐饮', icon: Utensils, color: '#FF6B6B' },
+  { id: 'transport', name: '交通', icon: Car, color: '#FDD663' },
+  { id: 'housing', name: '居住', icon: Home, color: '#45B7D1' },
+  { id: 'shopping', name: '购物', icon: ShoppingBag, color: '#96CEB4' },
+  { id: 'education', name: '教育', icon: BookOpen, color: '#DDA0DD' },
+  { id: 'health', name: '医疗', icon: HeartPulse, color: '#FF8C94' },
 ];
 
 // 自然语言解析示例
@@ -303,6 +308,7 @@ export function QuickRecordModal() {
           <div className="text-xs text-text-tertiary mb-2">选择分类</div>
           <div className="grid grid-cols-6 gap-2">
             {QUICK_CATEGORIES.map((cat) => {
+              const Icon = cat.icon;
               const isSelected = selectedCategory === cat.id;
               return (
                 <button
@@ -317,7 +323,7 @@ export function QuickRecordModal() {
                     className="w-9 h-9 rounded-lg flex items-center justify-center"
                     style={{ backgroundColor: cat.color + '20' }}
                   >
-                    <CategoryIcon iconKey={cat.icon} size={18} color={cat.color} />
+                    <Icon size={18} style={{ color: cat.color }} />
                   </div>
                   <span className="text-xs text-text-secondary">{cat.name}</span>
                 </button>

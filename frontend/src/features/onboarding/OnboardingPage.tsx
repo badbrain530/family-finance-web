@@ -14,7 +14,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
-import { CategoryIcon } from '@/components/common/CategoryIcon';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { createFamily } from '@/services/family.service';
@@ -281,20 +280,20 @@ export function OnboardingPage() {
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { name: '食品烟酒', icon: 'dining' },
-                    { name: '衣着', icon: 'clothing' },
-                    { name: '居住', icon: 'home' },
-                    { name: '生活用品', icon: 'shopping' },
-                    { name: '交通通信', icon: 'transport' },
-                    { name: '教育文化', icon: 'education' },
-                    { name: '医疗保健', icon: 'medical' },
-                    { name: '其他', icon: 'other' },
+                    { name: '食品烟酒', icon: '🍱', color: '#FF6B6B' },
+                    { name: '衣着', icon: '👕', color: '#4ECDC4' },
+                    { name: '居住', icon: '🏠', color: '#45B7D1' },
+                    { name: '生活用品', icon: '🛒', color: '#96CEB4' },
+                    { name: '交通通信', icon: '🚗', color: '#FFEAA7' },
+                    { name: '教育文化', icon: '📚', color: '#DDA0DD' },
+                    { name: '医疗保健', icon: '💊', color: '#FF8C94' },
+                    { name: '其他', icon: '📋', color: '#A8A8A8' },
                   ].map((cat) => (
                     <div
                       key={cat.name}
                       className="flex items-center gap-2 p-3 rounded-lg border border-border hover:border-primary-200 transition-colors"
                     >
-                      <CategoryIcon iconKey={cat.icon} size={24} />
+                      <span className="text-xl">{cat.icon}</span>
                       <span className="text-sm font-medium text-text-primary">{cat.name}</span>
                       <Check size={14} className="ml-auto text-primary" />
                     </div>
