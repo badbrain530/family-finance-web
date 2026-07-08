@@ -54,7 +54,7 @@ export function batchClassifyTransactions(ids: string[], categoryId: string): Pr
 
 /** Ctrl+K快捷记账 */
 export function quickRecord(data: QuickRecordRequest): Promise<QuickRecordResult> {
-  return post<QuickRecordResult>('/transactions/quick-record', data);
+  return post<QuickRecordResult>('/transactions/quick', data);
 }
 
 /** 纠正分类（AI学习） */
