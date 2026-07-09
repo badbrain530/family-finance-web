@@ -197,66 +197,96 @@ docker compose up -d --build
 
 ## 可选：配置域名 + HTTPS
 
-### 1. 域名解析
+> 说明：本项目 HTTPS 由**前端容器内的 Nginx** 直接承载（已在 `frontend/nginx.conf` 写好 80→443 跳转与 443 监听），证书放在宿主机项目内的 `ssl/` 目录，由 `docker-compose.yml` 以只读方式挂载到容器内的 `/etc/nginx/ssl`。因此**不需要**在宿主机再装 Nginx 做反代，也**不要**改动 `docker-compose.yml` 与 `frontend/nginx.conf`。
 
-在域名服务商处添加 A 记录：
-- 主机记录：`finance`（或 `@`）
-- 记录类型：A
-- 记录值：你的服务器公网IP
+### 1. 前提条件
 
-### 2. 修改 .env
+- 域名 `family-finance.cloud`（含 `www.family-finance.cloud`）已通过 A 记录解析到本服务器公网 IP；
+- 腾讯云轻量服务器防火墙 / 安全组已开放 `80` 与 `443`（certbot 校验与 HTTPS 访问都需要）；
+- 服务器已安装 `certbot` 与 `docker` / `docker compose`（见上文部署步骤）。
 
-```bash
-# 编辑 .env，修改 CORS
-CORS_ORIGINS=https://finance.yourdomain.com
+### 2. 申请证书（二选一）
 
-# 前端API地址改为相对路径（Nginx反代）
-VITE_API_BASE_URL=/api
-VITE_WS_URL=
-```
+#### A. Let's Encrypt 自动申请（推荐）
 
-### 3. 配置 Nginx 反向代理 + SSL
+在项目根目录执行脚本即可，证书会自动签发到 `ssl/live/family-finance.cloud/`：
 
 ```bash
-# 安装 Nginx 和 Certbot
-apt install -y nginx certbot python3-certbot-nginx
-
-# 创建反向代理配置
-cat > /etc/nginx/conf.d/finance.conf << 'EOF'
-server {
-    listen 80;
-    server_name finance.yourdomain.com;  # 改为你的域名
-
-    client_max_body_size 50M;  # 账单文件上传
-
-    location / {
-        proxy_pass http://127.0.0.1:80;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-EOF
-
-# 重新加载 Nginx
-nginx -t && systemctl reload nginx
-
-# 申请SSL证书（自动配置HTTPS）
-certbot --nginx -d finance.yourdomain.com
+# 在项目根目录（docker-compose.yml 所在目录）执行
+bash deploy/init-ssl.sh
 ```
 
-### 4. 修改 docker-compose 端口映射
+脚本会自动：
+- 检查 `certbot`、`docker`、`docker compose` 是否就绪；
+- 若 frontend 容器正在运行（占用 80 端口），先临时 `stop frontend` 释放 80 端口，申请完成后再 `start frontend` 恢复；
+- 用 `certbot certonly --standalone` 把证书写到 `ssl/live/family-finance.cloud/{fullchain.pem,privkey.pem}`；
+- 支持续期：执行 `bash deploy/init-ssl.sh renew`（见第 6 节）。
 
-如果使用宿主机Nginx反代，修改 `docker-compose.yml` 中前端端口：
+#### B. 腾讯云 / 其它厂商免费证书
 
-```yaml
-  frontend:
-    ports:
-      - "127.0.0.1:8080:80"  # 只监听本地，由宿主机Nginx反代
+1. 在证书控制台申请 Nginx 格式证书并下载；
+2. 将证书文件按如下命名放入 `ssl/live/family-finance.cloud/` 目录（没有该目录则新建）：
+   - 证书文件重命名为 `fullchain.pem`
+   - 私钥文件重命名为 `privkey.pem`
+
+```bash
+mkdir -p ssl/live/family-finance.cloud
+# 把下载的证书 / 私钥拷贝进来并改名
+cp 你的证书.pem ssl/live/family-finance.cloud/fullchain.pem
+cp 你的私钥.key ssl/live/family-finance.cloud/privkey.pem
 ```
 
-然后 `docker compose up -d` 重启。
+### 3. 不要改动 docker-compose / nginx.conf
+
+容器内 Nginx 已监听 `443` 并引用 `/etc/nginx/ssl/live/family-finance.cloud/` 路径。只要宿主机项目内的 `ssl/` 目录存在证书、且 `docker-compose.yml` 已挂载它（已配好，无需改动），前端容器启动后即可使用 HTTPS。
+
+### 4. 配置 .env
+
+编辑 `.env`，把跨域来源改为 HTTPS 域名（多个用逗号分隔），前端 API 地址保持 `/api` 走 Nginx 反代：
+
+```bash
+# 编辑 .env
+CORS_ORIGINS=https://family-finance.cloud
+VITE_API_BASE_URL=/api   # 保持不变
+```
+
+> 提示：`VITE_API_BASE_URL` 必须是 `/api`（相对路径，由容器内 Nginx 反代到后端），不能写成 `http://...`。
+
+### 5. 启动 / 访问顺序
+
+```bash
+# 1) 从模板创建 .env（若尚未创建）
+cp .env.production.example .env
+
+# 2) 按需修改 .env 中的密钥、CORS_ORIGINS 等
+
+# 3) 申请证书（此时 80 端口需空闲，脚本会自动处理冲突）
+bash deploy/init-ssl.sh
+
+# 4) 构建并启动全部服务
+docker compose up -d --build
+```
+
+访问 `https://family-finance.cloud`，浏览器访问 `http://family-finance.cloud` 会自动 301 跳转到 HTTPS。
+
+若 frontend 已在运行、仅需重新加载新证书，可执行：
+
+```bash
+docker compose restart frontend
+```
+
+### 6. 证书自动续期（Let's Encrypt）
+
+Let's Encrypt 证书有效期 90 天。建议加入系统 cron 自动续期（脚本 `renew` 模式会先停 frontend 释放 80 端口，续期后自动恢复）：
+
+```bash
+# 编辑 root 的定时任务
+crontab -e
+# 加入下行（每天 0 点、12 点各检查一次，到期自动续期）：
+0 0,12 * * * root bash /opt/family-finance/deploy/init-ssl.sh renew >> /var/log/ssl-renew.log 2>&1
+```
+
+> 提示：若你是其他路径部署（非 `/opt/family-finance`），请将上面路径替换为实际的 `deploy/init-ssl.sh` 绝对路径。
 
 ---
 
