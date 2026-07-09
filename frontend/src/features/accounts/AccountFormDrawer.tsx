@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Users } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +17,7 @@ import {
   updateAccount,
   deactivateAccount,
 } from '@/services/account.service';
+import { getCurrentFamily } from '@/services/family.service';
 import { ACCOUNT_TYPE_META, ACCOUNT_TYPE_ORDER } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/utils';
@@ -25,7 +28,7 @@ import type { Account, CreateAccountRequest, UpdateAccountRequest } from '@/type
  * 新建/编辑账户抽屉（采用 Dialog 承载，按类型动态渲染字段）
  */
 interface AccountFormDrawerProps {
-  familyId: string;
+  familyId?: string;
   account: Account | null; // 有值=编辑，无值=新建
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -48,14 +51,43 @@ function daysUntilDue(paymentDueDay: number | null): number | null {
 }
 
 export function AccountFormDrawer({
-  familyId,
+  familyId: familyIdProp,
   account,
   open,
   onOpenChange,
   onSaved,
 }: AccountFormDrawerProps) {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const isEdit = !!account;
+
+  // 运行时解析 familyId：优先用外部传入；缺失时再调 getCurrentFamily 兜底
+  // （容错 AccountsPage.family 过期为 null 的情况），始终保证抽屉可弹出
+  const [resolvedFamilyId, setResolvedFamilyId] = useState<string | undefined>(familyIdProp);
+  const [familyLoading, setFamilyLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    if (familyIdProp) {
+      setResolvedFamilyId(familyIdProp);
+      return;
+    }
+    let cancelled = false;
+    setFamilyLoading(true);
+    getCurrentFamily()
+      .then((fam) => {
+        if (!cancelled) setResolvedFamilyId(fam.id);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedFamilyId(undefined);
+      })
+      .finally(() => {
+        if (!cancelled) setFamilyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, familyIdProp]);
 
   // 表单状态
   const [type, setType] = useState<AccountType>(AccountType.DEBIT);
@@ -99,6 +131,10 @@ export function AccountFormDrawer({
   }, [open, account]);
 
   const handleSave = async () => {
+    if (!resolvedFamilyId) {
+      toast({ title: '请先在「家庭协同」页创建家庭', variant: 'destructive' });
+      return;
+    }
     if (!name.trim()) {
       toast({ title: '请输入账户名称', variant: 'destructive' });
       return;
@@ -117,7 +153,7 @@ export function AccountFormDrawer({
     }
 
     const base: CreateAccountRequest = {
-      familyId,
+      familyId: resolvedFamilyId,
       type,
       name: name.trim(),
       balance: numBalance,
@@ -178,7 +214,32 @@ export function AccountFormDrawer({
           <DialogTitle>{isEdit ? '编辑账户' : '添加账户'}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-1">
+        {!resolvedFamilyId ? (
+          familyLoading ? (
+            <div className="py-8 text-center text-text-secondary">加载中...</div>
+          ) : (
+            <div className="py-6 flex flex-col items-center text-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-primary-50 flex items-center justify-center">
+                <Users size={24} className="text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-text-primary">尚未加入任何家庭</p>
+                <p className="text-text-secondary mt-1 text-sm">
+                  添加账户需先创建或加入一个家庭。请前往「家庭协同」页创建。
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  onOpenChange(false);
+                  navigate('/family');
+                }}
+              >
+                去「家庭协同」创建家庭
+              </Button>
+            </div>
+          )
+        ) : (
+          <div className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-1">
           {/* 账户类型选择 */}
           <div className="space-y-2">
             <Label>账户类型</Label>
@@ -351,6 +412,7 @@ export function AccountFormDrawer({
             </div>
           )}
         </div>
+        )}
 
         <DialogFooter className="flex items-center justify-between">
           {isEdit && account ? (
@@ -372,7 +434,7 @@ export function AccountFormDrawer({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               取消
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving || !resolvedFamilyId}>
               {saving ? '保存中...' : isEdit ? '保存修改' : '创建账户'}
             </Button>
           </div>

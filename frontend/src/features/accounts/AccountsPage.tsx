@@ -200,16 +200,14 @@ export function AccountsPage() {
         </div>
       )}
 
-      {/* 新建/编辑抽屉 */}
-      {family && (
-        <AccountFormDrawer
-          familyId={family.id}
-          account={editing}
-          open={drawerOpen}
-          onOpenChange={setDrawerOpen}
-          onSaved={load}
-        />
-      )}
+      {/* 新建/编辑抽屉：始终挂载，family 缺失时在抽屉内引导（避免「按钮能点却无反应」） */}
+      <AccountFormDrawer
+        familyId={family?.id}
+        account={editing}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onSaved={load}
+      />
 
       {/* 功能C：账户交易流水抽屉 */}
       <AccountTransactionsDrawer
