@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Users,
   UserPlus,
@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Avatar } from '@/components/ui/avatar';
 import {
   Table,
@@ -31,7 +32,7 @@ import { AmountText } from '@/components/common/AmountText';
 import { CategoryTag } from '@/components/common/CategoryTag';
 import { useToast } from '@/components/ui/toaster';
 import { useAuthStore } from '@/store/authStore';
-import { getCurrentFamily } from '@/services/family.service';
+import { getCurrentFamily, createFamily } from '@/services/family.service';
 import { getLedgers, createLedger } from '@/services/ledger.service';
 import { cn, formatCurrency, formatDate, copyToClipboard } from '@/lib/utils';
 import { MemberRole, LedgerType } from '@/types/family';
@@ -53,6 +54,7 @@ const ROLE_CONFIG: Record<MemberRole, { label: string; icon: typeof Crown; color
 export function FamilyLedgerPage() {
   const { user } = useAuthStore();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
 
   // TanStack Query 获取家庭数据
@@ -85,6 +87,32 @@ export function FamilyLedgerPage() {
   const [showCreateInput, setShowCreateInput] = useState(false);
   const [newLedgerName, setNewLedgerName] = useState('');
   const [creatingLedger, setCreatingLedger] = useState(false);
+
+  // 创建家庭相关状态（无家庭时的入口，闭合"被引导建家庭却无入口"的死路）
+  const [showCreateFamilyInput, setShowCreateFamilyInput] = useState(false);
+  const [newFamilyName, setNewFamilyName] = useState('');
+
+  const createFamilyMutation = useMutation({
+    mutationFn: (name: string) => createFamily({ name }),
+    onSuccess: () => {
+      // 家庭创建成功后，重新拉取当前家庭，使"我的账本"/"邀请成员"等随之可用
+      queryClient.invalidateQueries({ queryKey: ['currentFamily'] });
+      setShowCreateFamilyInput(false);
+      setNewFamilyName('');
+      toast({
+        title: '家庭已创建',
+        description: '现在可以创建账本、邀请成员一起记账了',
+        variant: 'success',
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: '创建家庭失败',
+        description: err?.message || '请稍后重试',
+        variant: 'destructive',
+      });
+    },
+  });
 
   // 暂用常量（后续移除）
   const mockMembers = [
@@ -146,6 +174,19 @@ export function FamilyLedgerPage() {
     }
   };
 
+  // 创建家庭
+  const handleCreateFamily = () => {
+    const name = newFamilyName.trim();
+    if (!name) {
+      toast({
+        title: '请输入家庭名称',
+        variant: 'destructive',
+      });
+      return;
+    }
+    createFamilyMutation.mutate(name);
+  };
+
   // 汇总
   const totalExpense = members.reduce((sum: number, m: any) => sum + m.expense, 0);
   const totalIncome = members.reduce((sum: number, m: any) => sum + m.income, 0);
@@ -166,6 +207,29 @@ export function FamilyLedgerPage() {
           邀请成员
         </Button>
       </div>
+
+      {/* 空状态：尚未创建/加入家庭 —— 提供"创建家庭"入口，闭合引导死路 */}
+      {!familyLoading && !family && (
+        <Card className="mb-6 border-dashed border-primary-200 bg-primary-50/40">
+          <CardContent className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-xl bg-primary-50 flex items-center justify-center shrink-0">
+                <Users size={22} className="text-primary" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-text-primary">你还没有家庭</h2>
+                <p className="text-sm text-text-secondary mt-1">
+                  创建家庭后即可管理共享账本、邀请成员一起记账
+                </p>
+              </div>
+            </div>
+            <Button onClick={() => setShowCreateFamilyInput(true)} className="shrink-0">
+              <Plus size={16} />
+              创建家庭
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 汇总卡片 */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-6">
@@ -405,6 +469,66 @@ export function FamilyLedgerPage() {
           </Card>
         </div>
       )}
+
+      {/* 创建家庭弹窗（无家庭时的入口，闭合死路） */}
+      {showCreateFamilyInput && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={() => setShowCreateFamilyInput(false)}
+        >
+          <Card className="w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                <Users size={20} className="text-primary" />
+              </div>
+              <h2 className="text-lg font-semibold text-text-primary">创建家庭</h2>
+            </div>
+            <p className="text-sm text-text-secondary mb-4">
+              为你的家庭起个名字，创建后即可共享账本、邀请成员一起记账。
+            </p>
+            <div className="space-y-2 mb-4">
+              <Label htmlFor="newFamilyName">家庭名称</Label>
+              <Input
+                id="newFamilyName"
+                value={newFamilyName}
+                onChange={(e) => setNewFamilyName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateFamily();
+                }}
+                placeholder="例如：张家的小日子"
+                className="flex-1"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setShowCreateFamilyInput(false);
+                  setNewFamilyName('');
+                }}
+                disabled={createFamilyMutation.isPending}
+              >
+                取消
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handleCreateFamily}
+                disabled={createFamilyMutation.isPending || !newFamilyName.trim()}
+              >
+                {createFamilyMutation.isPending ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Plus size={14} />
+                )}
+                创建
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
     </div>
   );
 }
