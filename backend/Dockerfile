@@ -2,7 +2,7 @@
 # 多阶段构建：编译TypeScript → 运行Node.js
 
 # 阶段1：构建
-FROM node:20-alpine AS builder
+FROM node:20-alpine3.18 AS builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # 阶段2：运行
-FROM node:20-alpine AS runner
+FROM node:20-alpine3.18 AS runner
 
 WORKDIR /app
 
