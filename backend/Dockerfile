@@ -28,7 +28,8 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 # 安装 dumb-init + nc（用于entrypoint中检测数据库就绪）
-RUN apk add --no-cache dumb-init netcat-openbsd
+# openssl1.1-compat 提供 libssl.so.1.1 / libcrypto.so.1.1，供 Prisma 5.22 musl 引擎加载
+RUN apk add --no-cache dumb-init netcat-openbsd openssl1.1-compat
 
 # 复制package文件
 COPY package*.json ./
