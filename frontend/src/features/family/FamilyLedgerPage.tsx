@@ -76,11 +76,14 @@ export function FamilyLedgerPage() {
   const {
     data: ledgers,
     isLoading: ledgersLoading,
+    isError: ledgersError,
+    error: ledgersErrorObj,
     refetch: refetchLedgers,
   } = useQuery({
     queryKey: ['ledgers', family?.id],
     queryFn: () => getLedgers(family!.id),
     enabled: !!family?.id,
+    retry: 1,
   });
 
   // 账本新建相关状态
@@ -157,13 +160,16 @@ export function FamilyLedgerPage() {
       await createLedger(family.id, name, LedgerType.SHARED);
       setNewLedgerName('');
       setShowCreateInput(false);
-      await refetchLedgers();
+      // invalidate 比 refetch 更稳妥：按 queryKey 使缓存失效并重新拉取，
+      // 同时清掉此前可能存在的错误态，避免卡在"加载失败"。
+      await queryClient.invalidateQueries({ queryKey: ['ledgers', family.id] });
       toast({
         title: '账本已创建',
         description: `已创建「${name}」`,
         variant: 'success',
       });
     } catch (err: any) {
+      // 展示后端真实错误（如 403 "权限等级不足"），而非笼统文案
       toast({
         title: '创建账本失败',
         description: err?.message || '请稍后重试',
@@ -287,6 +293,17 @@ export function FamilyLedgerPage() {
             <div className="px-6 py-8 flex items-center justify-center gap-2 text-sm text-text-tertiary">
               <Loader2 size={14} className="animate-spin" />
               加载中…
+            </div>
+          ) : ledgersError ? (
+            <div className="px-6 py-8 text-center">
+              <p className="text-sm text-expense mb-1">账本加载失败</p>
+              <p className="text-xs text-text-tertiary mb-4">
+                {ledgersErrorObj instanceof Error ? ledgersErrorObj.message : '请稍后重试'}
+              </p>
+              <Button size="sm" variant="outline" onClick={() => refetchLedgers()}>
+                <Loader2 size={14} />
+                重试
+              </Button>
             </div>
           ) : ledgers && ledgers.length > 0 ? (
             <ul className="divide-y divide-border">

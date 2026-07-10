@@ -26,10 +26,10 @@ export class LedgersService {
 
     const type = dto.type || 'personal';
 
-    // 共同账本只能由 owner/admin 创建
-    if (type === 'shared') {
-      await this.familiesService.validateFamilyRole(dto.familyId, userId, ['OWNER', 'ADMIN']);
-    }
+    // 家庭共同账本是协作场景，任何家庭成员（OWNER/ADMIN/MEMBER/VIEWER 均含）
+    // 均可创建共享账本，此处不再按角色限制，避免普通成员（如通过邀请码加入的
+    // MEMBER）在创建共享账本时收到 403 而落入"无账本"死路。
+    // 成员身份已由上方的 validateFamilyMember 校验，个人账本仅本人可见。
 
     // 个人子账本设置 ownerId
     const ownerId = type === 'personal' ? userId : null;

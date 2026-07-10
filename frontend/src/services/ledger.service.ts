@@ -9,9 +9,25 @@ import { LedgerType, type Ledger } from '@/types/family';
  *   POST /api/ledgers  body: { familyId, name, type? }
  */
 
+/**
+ * 归一化后端返回的账本 type 字段大小写。
+ *
+ * 后端 Prisma 枚举为 SHARED / PERSONAL（大写），而前端 LedgerType 约定为
+ * shared / personal（小写）。在此统一转换为前端约定，避免大小写不一致导致
+ * 类型徽章、共享账本筛选（QuickRecordModal 中查找共享账本）等判断失效。
+ * 采用大小写不敏感比较，幂等，对测试 mock 的 lowercase 同样安全。
+ */
+function normalizeLedger(raw: Ledger): Ledger {
+  const type =
+    String(raw.type).toUpperCase() === 'SHARED' ? LedgerType.SHARED : LedgerType.PERSONAL;
+  return { ...raw, type };
+}
+
 /** 获取账本列表（按 familyId 过滤） */
 export function getLedgers(familyId: string): Promise<Ledger[]> {
-  return get<Ledger[]>('/ledgers', { params: { familyId } });
+  return get<Ledger[]>('/ledgers', { params: { familyId } }).then((list) =>
+    (list ?? []).map(normalizeLedger),
+  );
 }
 
 /**
