@@ -16,6 +16,7 @@ import { getAccounts } from '@/services/account.service';
 import { useToast } from '@/components/ui/toaster';
 import { Button } from '@/components/ui/button';
 import { AccountFormDrawer } from './AccountFormDrawer';
+import { getDueInfo } from './dueDate';
 import { AccountTransactionsDrawer } from './AccountTransactionsDrawer';
 import { ACCOUNT_TYPE_META, ACCOUNT_TYPE_ORDER } from '@/lib/constants';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -31,25 +32,6 @@ const ACCOUNT_ICONS: Record<string, LucideIcon> = {
   Wallet,
   Sparkles,
 };
-
-/** 距还款日天数（短月按当月最后一天计，避免 29~31 号溢出到下月） */
-function daysUntilDue(paymentDueDay: number | null): number | null {
-  if (!paymentDueDay) return null;
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const day = Math.min(paymentDueDay, daysInMonth);
-  let due = new Date(year, month, day);
-  if (due < now) {
-    // 已过期则算下个月，下个月同样按短月兜底
-    const ny = month === 11 ? year + 1 : year;
-    const nm = (month + 1) % 12;
-    const nDays = new Date(ny, nm + 1, 0).getDate();
-    due = new Date(ny, nm, Math.min(paymentDueDay, nDays));
-  }
-  return Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-}
 
 /**
  * 账户总览页
@@ -251,7 +233,7 @@ function AccountCard({
   const available = account.availableCredit ?? 0;
   const limit = account.creditLimit ?? 0;
   const usedPercent = limit > 0 ? Math.min(100, (account.balance / limit) * 100) : 0;
-  const dueDays = daysUntilDue(account.paymentDueDay);
+  const dueInfo = getDueInfo(account.paymentDueDay);
 
   return (
     <div
@@ -326,8 +308,13 @@ function AccountCard({
             </div>
             {account.billingDay && (
               <div className="flex gap-3 mt-2 text-xs text-text-secondary">
-                <span>账单日 {account.billingDay} 日</span>
-                {dueDays != null && <span>距还款 {dueDays} 天</span>}
+                <span>账单日 {account.billingDay} 号</span>
+                {dueInfo && (
+                  <span>
+                    距还款 {dueInfo.days} 天
+                    <span className="text-text-tertiary">（{dueInfo.isNextMonth ? '下月' : '本月'}{dueInfo.dueDay} 号）</span>
+                  </span>
+                )}
               </div>
             )}
           </>

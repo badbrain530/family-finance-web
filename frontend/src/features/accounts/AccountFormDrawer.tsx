@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/utils';
 import { AccountType } from '@/types/account';
 import type { Account, CreateAccountRequest, UpdateAccountRequest } from '@/types/account';
+import { getDueInfo } from './dueDate';
 
 /**
  * 新建/编辑账户抽屉（采用 Dialog 承载，按类型动态渲染字段）
@@ -33,26 +34,6 @@ interface AccountFormDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
-}
-
-/** 计算距还款日天数（短月按当月最后一天计，避免 29~31 号溢出到下月） */
-function daysUntilDue(paymentDueDay: number | null): number | null {
-  if (!paymentDueDay) return null;
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const day = Math.min(paymentDueDay, daysInMonth);
-  let due = new Date(year, month, day);
-  if (due < now) {
-    // 已过期则算下个月，下个月同样按短月兜底
-    const ny = month === 11 ? year + 1 : year;
-    const nm = (month + 1) % 12;
-    const nDays = new Date(ny, nm + 1, 0).getDate();
-    due = new Date(ny, nm, Math.min(paymentDueDay, nDays));
-  }
-  const diff = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  return diff;
 }
 
 export function AccountFormDrawer({
@@ -210,7 +191,7 @@ export function AccountFormDrawer({
     type === AccountType.CREDIT && creditLimit && balance
       ? parseFloat(creditLimit) - parseFloat(balance)
       : null;
-  const previewDueDays = type === AccountType.CREDIT ? daysUntilDue(paymentDueDay ? parseInt(paymentDueDay, 10) : null) : null;
+  const previewDueInfo = type === AccountType.CREDIT ? getDueInfo(paymentDueDay ? parseInt(paymentDueDay, 10) : null) : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -380,10 +361,12 @@ export function AccountFormDrawer({
                       {formatCurrency(previewAvailable)}
                     </span>
                   </div>
-                  {previewDueDays != null && (
+                  {previewDueInfo && (
                     <div className="flex justify-between text-text-secondary mt-1">
                       <span>距还款日</span>
-                      <span className="font-medium text-text-primary">约 {previewDueDays} 天</span>
+                      <span className="font-medium text-text-primary">
+                        约 {previewDueInfo.days} 天（{previewDueInfo.isNextMonth ? '下月' : '本月'}{previewDueInfo.dueDay} 号）
+                      </span>
                     </div>
                   )}
                 </div>

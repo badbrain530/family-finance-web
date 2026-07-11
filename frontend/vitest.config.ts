@@ -18,6 +18,7 @@ export default defineConfig({
     include: [
       'src/features/dashboard/**/*.test.{ts,tsx}',
       'src/features/categories/**/*.test.{ts,tsx}',
+      'src/features/accounts/**/*.test.{ts,tsx}',
     ],
   },
 });
