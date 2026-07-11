@@ -35,16 +35,21 @@ interface AccountFormDrawerProps {
   onSaved: () => void;
 }
 
-/** 计算距还款日天数（基于当前月） */
+/** 计算距还款日天数（短月按当月最后一天计，避免 29~31 号溢出到下月） */
 function daysUntilDue(paymentDueDay: number | null): number | null {
   if (!paymentDueDay) return null;
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
-  let due = new Date(year, month, paymentDueDay);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const day = Math.min(paymentDueDay, daysInMonth);
+  let due = new Date(year, month, day);
   if (due < now) {
-    // 已过期则算下个月
-    due = new Date(year, month + 1, paymentDueDay);
+    // 已过期则算下个月，下个月同样按短月兜底
+    const ny = month === 11 ? year + 1 : year;
+    const nm = (month + 1) % 12;
+    const nDays = new Date(ny, nm + 1, 0).getDate();
+    due = new Date(ny, nm, Math.min(paymentDueDay, nDays));
   }
   const diff = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   return diff;
@@ -341,12 +346,12 @@ export function AccountFormDrawer({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="acc-bill">账单日（1-28）</Label>
+                  <Label htmlFor="acc-bill">账单日（1-31）</Label>
                   <Input
                     id="acc-bill"
                     type="number"
                     min="1"
-                    max="28"
+                    max="31"
                     value={billingDay}
                     onChange={(e) => setBillingDay(e.target.value)}
                     placeholder="如：5"
@@ -354,12 +359,12 @@ export function AccountFormDrawer({
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="acc-due">还款日（1-28）</Label>
+                <Label htmlFor="acc-due">还款日（1-31）</Label>
                 <Input
                   id="acc-due"
                   type="number"
                   min="1"
-                  max="28"
+                  max="31"
                   value={paymentDueDay}
                   onChange={(e) => setPaymentDueDay(e.target.value)}
                   placeholder="如：23"

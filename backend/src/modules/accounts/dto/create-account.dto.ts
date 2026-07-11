@@ -68,20 +68,20 @@ export class CreateAccountDto {
   @Min(0, { message: '授信额度不能为负数' })
   readonly creditLimit?: number;
 
-  /** 账单日 1-28 */
+  /** 账单日 1-31（短月如 2 月无该日时按当月最后一天计） */
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(28)
+  @Max(31)
   readonly billingDay?: number;
 
-  /** 还款日 1-28 */
+  /** 还款日 1-31（短月如 2 月无该日时按当月最后一天计） */
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(28)
+  @Max(31)
   readonly paymentDueDay?: number;
 
   /** 投资/钱包平台 */

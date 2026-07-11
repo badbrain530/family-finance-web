@@ -48,14 +48,14 @@ export class UpdateAccountDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(28)
+  @Max(31)
   readonly billingDay?: number;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(28)
+  @Max(31)
   readonly paymentDueDay?: number;
 
   @IsOptional()

@@ -28,9 +28,9 @@ export interface Account {
   lastFourDigits: string | null;
   /** 信用卡授信额度 */
   creditLimit: number | null;
-  /** 账单日 1-28 */
+  /** 账单日 1-31（短月按当月最后一天计） */
   billingDay: number | null;
-  /** 还款日 1-28 */
+  /** 还款日 1-31（短月按当月最后一天计） */
   paymentDueDay: number | null;
   /** 信用卡可用额度 = 授信 - 欠款（后端计算，仅信用卡有值） */
   availableCredit: number | null;

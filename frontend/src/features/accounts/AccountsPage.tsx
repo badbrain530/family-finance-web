@@ -32,12 +32,22 @@ const ACCOUNT_ICONS: Record<string, LucideIcon> = {
   Sparkles,
 };
 
-/** 距还款日天数 */
+/** 距还款日天数（短月按当月最后一天计，避免 29~31 号溢出到下月） */
 function daysUntilDue(paymentDueDay: number | null): number | null {
   if (!paymentDueDay) return null;
   const now = new Date();
-  let due = new Date(now.getFullYear(), now.getMonth(), paymentDueDay);
-  if (due < now) due = new Date(now.getFullYear(), now.getMonth() + 1, paymentDueDay);
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const day = Math.min(paymentDueDay, daysInMonth);
+  let due = new Date(year, month, day);
+  if (due < now) {
+    // 已过期则算下个月，下个月同样按短月兜底
+    const ny = month === 11 ? year + 1 : year;
+    const nm = (month + 1) % 12;
+    const nDays = new Date(ny, nm + 1, 0).getDate();
+    due = new Date(ny, nm, Math.min(paymentDueDay, nDays));
+  }
   return Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
