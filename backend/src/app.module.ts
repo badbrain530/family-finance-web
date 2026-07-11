@@ -19,7 +19,6 @@ import { AccountsModule } from './modules/accounts/accounts.module';
 import { WebsocketModule } from './modules/websocket/websocket.module';
 
 // T04 业务模块
-import { ImportsModule } from './modules/imports/imports.module';
 import { AiModule } from './modules/ai/ai.module';
 
 // T05 业务模块
@@ -78,7 +77,6 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
     // ===== T04 业务模块 =====
     AiModule,
-    ImportsModule,
 
     // ===== T05 业务模块 =====
     BudgetsModule,

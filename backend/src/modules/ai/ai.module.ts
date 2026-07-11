@@ -10,7 +10,6 @@
 
 import { Module } from '@nestjs/common';
 import { QwenProvider } from './providers/qwen.provider';
-import { AiClassificationService } from './ai-classification.service';
 import { AiReportService } from './ai-report.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { CategoriesModule } from '../categories/categories.module';
@@ -19,7 +18,6 @@ import { CategoriesModule } from '../categories/categories.module';
   imports: [PrismaModule, CategoriesModule],
   providers: [
     QwenProvider,
-    AiClassificationService,
     AiReportService,
     // 导出LLM Provider接口，使用Symbol token以便后续支持多Provider切换
     {
@@ -29,7 +27,6 @@ import { CategoriesModule } from '../categories/categories.module';
   ],
   exports: [
     QwenProvider,
-    AiClassificationService,
     AiReportService,
     {
       provide: 'ILLMProvider',

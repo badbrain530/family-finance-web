@@ -309,7 +309,7 @@ export function TransactionListPage() {
           <EmptyState
             icon={<ArrowLeftRight size={48} />}
             title="暂无交易记录"
-            description="按 Ctrl+K 快速记账，或导入账单开始管理你的财务"
+            description="按 Ctrl+K 快速记账，开始管理你的财务"
             action={
               <Button onClick={() => setQuickRecordOpen(true)}>
                 快速记账

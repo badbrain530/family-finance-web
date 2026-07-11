@@ -20,9 +20,6 @@ const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage').th
 // 交易管理
 const TransactionListPage = lazy(() => import('@/features/transactions/TransactionListPage').then(m => ({ default: m.TransactionListPage })));
 
-// 账单导入
-const ImportPage = lazy(() => import('@/features/import/ImportPage').then(m => ({ default: m.ImportPage })));
-
 // 家庭协同
 const FamilyLedgerPage = lazy(() => import('@/features/family/FamilyLedgerPage').then(m => ({ default: m.FamilyLedgerPage })));
 
@@ -80,7 +77,6 @@ function AuthRoute({ children }: { children: ReactNode }) {
  * - /dashboard - 仪表盘
  * - /transactions - 交易管理
  * - /accounts - 账户总览
- * - /import - 账单导入
  * - /family - 家庭协同
  * - /budget - 预算管理
  * - /categories - 分类管理
@@ -113,7 +109,6 @@ export default function App() {
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="transactions" element={<TransactionListPage />} />
           <Route path="accounts" element={<AccountsPage />} />
-          <Route path="import" element={<ImportPage />} />
           <Route path="family" element={<FamilyLedgerPage />} />
           <Route path="budget" element={<BudgetPage />} />
           <Route path="categories" element={<CategoriesManagePage />} />

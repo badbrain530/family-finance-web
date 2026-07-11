@@ -5,7 +5,7 @@ import {
   DialogContent,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Search, TrendingUp, ArrowLeftRight, Upload, Wallet, FileText, Settings, Plus } from 'lucide-react';
+import { Search, TrendingUp, ArrowLeftRight, Wallet, FileText, Settings, Plus } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { ROUTES } from '@/lib/constants';
 import { cn } from '@/lib/utils';
@@ -34,7 +34,6 @@ export function CommandPalette() {
   const commands: CommandItem[] = [
     { id: 'nav-dashboard', label: '仪表盘', icon: TrendingUp, action: () => navigate(ROUTES.DASHBOARD), group: '导航' },
     { id: 'nav-transactions', label: '交易管理', icon: ArrowLeftRight, action: () => navigate(ROUTES.TRANSACTIONS), group: '导航' },
-    { id: 'nav-import', label: '账单导入', icon: Upload, action: () => navigate(ROUTES.IMPORT), group: '导航' },
     { id: 'nav-family', label: '家庭协同', icon: Wallet, action: () => navigate(ROUTES.FAMILY), group: '导航' },
     { id: 'nav-budget', label: '预算管理', icon: Wallet, action: () => navigate(ROUTES.BUDGET), group: '导航' },
     { id: 'nav-report', label: '财务月报', icon: FileText, action: () => navigate(ROUTES.REPORTS), group: '导航' },

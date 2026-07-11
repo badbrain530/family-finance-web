@@ -15,7 +15,6 @@ import {
   Moon,
   Sun,
   Download,
-  Upload,
   Trash2,
   AlertTriangle,
 } from 'lucide-react';
@@ -64,7 +63,7 @@ const TAB_CONFIGS: TabConfig[] = [
   { id: 'security', label: '安全设置', icon: Shield, description: '密码、两步验证和登录设备' },
   { id: 'notifications', label: '通知偏好', icon: Bell, description: '推送、邮件和提醒设置' },
   { id: 'subscription', label: '订阅管理', icon: CreditCard, description: '套餐和账单管理' },
-  { id: 'data', label: '数据管理', icon: Database, description: '导入、导出和删除数据' },
+  { id: 'data', label: '数据管理', icon: Database, description: '导出和删除数据' },
 ];
 
 export function SettingsPage() {
@@ -686,28 +685,6 @@ export function SettingsPage() {
                   <Button variant="outline" onClick={handleExportData}>
                     <Download size={14} className="mr-1.5" />
                     导出全部数据
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* 数据导入 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Upload size={16} className="text-primary" />
-                    导入数据
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-text-secondary mb-3">
-                    从其他记账应用导入数据，支持CSV、OFX格式
-                  </p>
-                  <Button
-                    variant="outline"
-                    onClick={() => navigate(ROUTES.IMPORT)}
-                  >
-                    <Upload size={14} className="mr-1.5" />
-                    前往导入页面
                   </Button>
                 </CardContent>
               </Card>

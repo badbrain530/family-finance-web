@@ -67,13 +67,6 @@ export interface NotificationNewEvent {
   notification: import('./notification').Notification;
 }
 
-/** 导入完成事件 */
-export interface ImportCompletedEvent {
-  importId: string;
-  successCount: number;
-  aiAccuracy: number;
-}
-
 /** 月报生成完成事件 */
 export interface ReportReadyEvent {
   reportId: string;
@@ -96,6 +89,5 @@ export const WS_EVENTS = {
   MEMBER_OFFLINE: 'member:offline',
   BUDGET_ALERT: 'budget:alert',
   NOTIFICATION_NEW: 'notification:new',
-  IMPORT_COMPLETED: 'import:completed',
   REPORT_READY: 'report:ready',
 } as const;

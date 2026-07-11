@@ -10,7 +10,6 @@ export enum NotificationType {
   LARGE_EXPENSE = 'large_expense',
   MONTHLY_REPORT = 'monthly_report',
   FAMILY_MEMBER_JOIN = 'member_join',
-  IMPORT_COMPLETE = 'import_complete',
 }
 
 /** 通知记录 */

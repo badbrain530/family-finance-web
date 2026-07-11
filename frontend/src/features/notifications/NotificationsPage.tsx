@@ -5,7 +5,6 @@ import {
   CreditCard,
   FileText,
   Users,
-  Upload,
   Bell,
   CheckCheck,
   type LucideIcon,
@@ -37,7 +36,6 @@ const NOTIFICATION_META: Record<
   LARGE_EXPENSE: { label: '大额支出', icon: CreditCard, color: '#DC2626', route: '/transactions' },
   MONTHLY_REPORT: { label: '月报生成', icon: FileText, color: '#6366F1', route: '/reports' },
   FAMILY_MEMBER_JOIN: { label: '成员加入', icon: Users, color: '#3B82F6', route: '/family' },
-  IMPORT_COMPLETE: { label: '导入完成', icon: Upload, color: '#3B82F6', route: '/transactions' },
 };
 
 /** 路由修正：后端 actionUrl 与前端路由差异 */

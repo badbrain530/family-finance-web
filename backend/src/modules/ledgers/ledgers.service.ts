@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FamiliesService } from '../families/families.service';
 import { CreateLedgerDto } from './dto/create-ledger.dto';
@@ -9,6 +9,8 @@ import { CreateLedgerDto } from './dto/create-ledger.dto';
  */
 @Injectable()
 export class LedgersService {
+  private readonly logger = new Logger(LedgersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly familiesService: FamiliesService,
@@ -53,8 +55,21 @@ export class LedgersService {
    * @returns 账本列表（共同账本 + 当前用户的个人账本）
    */
   async getLedgers(familyId: string, userId: string) {
-    // 验证成员身份
-    await this.familiesService.validateFamilyMember(familyId, userId);
+    // 与前端当前家庭来源（getCurrentFamily -> getUserFamilies）保持同源判定：
+    // 基于 userId 查询其真实所属家庭列表，而非 validateFamilyMember 的复合唯一索引查询。
+    // 两套判定路径不一致时，前端能拿到 family 并发起请求，后端却 403，造成「账本加载失败」。
+    const userFamilies = await this.familiesService.getUserFamilies(userId);
+    const belongs = userFamilies.some((f) => f.id === familyId);
+    this.logger.warn(
+      `[getLedgers] familyId=${familyId} userId=${userId} belongs=${belongs} ` +
+        `userFamilies=${userFamilies.map((f) => f.id).join(',')}`,
+    );
+    if (!belongs) {
+      throw new ForbiddenException({
+        code: 3002,
+        message: '您不是该家庭的成员',
+      });
+    }
 
     // 查询共同账本 + 当前用户的个人账本
     const ledgers = await this.prisma.ledger.findMany({
