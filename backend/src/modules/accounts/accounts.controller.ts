@@ -60,9 +60,9 @@ export class AccountsController {
 
   /**
    * 编辑账户
-   * PATCH /api/accounts/:id
+   * PUT /api/accounts/:id
    */
-  @Patch(':id')
+  @Put(':id')
   async updateAccount(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
