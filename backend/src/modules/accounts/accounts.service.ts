@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FamiliesService } from '../families/families.service';
+import { TransactionsService } from '../transactions/transactions.service';
 import { AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
@@ -35,6 +36,7 @@ export class AccountsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly familiesService: FamiliesService,
+    private readonly transactionsService: TransactionsService,
   ) {}
 
   /**
@@ -158,6 +160,33 @@ export class AccountsService {
 
     const account = await this.prisma.account.update({ where: { id }, data });
     this.logger.log(`账户更新成功: id=${id}`);
+
+    // 余额修改 → 生成「余额修改」交易记录（仅记录，不二次调账）
+    try {
+      const oldBalance = Number(existing.balance ?? 0);
+      const newBalance = Number(dto.balance ?? oldBalance);
+      if (dto.balance !== undefined && newBalance !== oldBalance) {
+        // Transaction.ledgerId 必填：优先用账户自带账本，否则取家庭首个账本
+        const ledgerForTx =
+          existing.ledgerId ??
+          (await this.prisma.ledger.findFirst({
+            where: { familyId: existing.familyId },
+          }))?.id ??
+          null;
+        await this.transactionsService.recordBalanceAdjustment({
+          accountId: id,
+          ledgerId: ledgerForTx,
+          familyId: existing.familyId,
+          userId: user.userId,
+          oldBalance,
+          newBalance,
+        });
+      }
+    } catch (err) {
+      // 记录生成失败不影响余额更新结果，仅告警
+      this.logger.warn(`余额修改记录生成失败: account=${id}, err=${(err as Error)?.message}`);
+    }
+
     return serializeAccount(account);
   }
 

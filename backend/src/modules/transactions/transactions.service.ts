@@ -859,6 +859,77 @@ export class TransactionsService {
   }
 
   /**
+   * 余额修改记录：账户余额被手动修改时，生成一条「余额修改」交易记录。
+   *
+   * 仅作记录，不调用 adjustAccountBalance —— 余额本身已由 updateAccount 直接设定，
+   * 若再调账会导致余额翻倍/归零。用 metadata.balanceAdjustment=true 标记，
+   * 前端据此：① 在收入/支出汇总中排除该记录；② 行内展示「余额修改」徽章。
+   * 不新增 TransactionSource 枚举值（规避 DB migration），source 复用 MANUAL。
+   *
+   * @returns 创建的交易；若无可用账本（Transaction.ledgerId 必填）或无实际变动则返回 null
+   */
+  async recordBalanceAdjustment(params: {
+    accountId: string;
+    ledgerId: string | null;
+    familyId: string;
+    userId: string;
+    oldBalance: number;
+    newBalance: number;
+  }): Promise<any | null> {
+    const { accountId, ledgerId, familyId, userId, oldBalance, newBalance } = params;
+
+    // 无可用账本则跳过记录（仅更新余额），避免违反 ledgerId 必填约束
+    if (!ledgerId) {
+      this.logger.warn(`余额修改未生成记录: account=${accountId}, 无可用账本`);
+      return null;
+    }
+
+    const delta = Math.round((newBalance - oldBalance) * 100) / 100;
+    // 余额无实际变化，不生成记录
+    if (delta === 0) return null;
+
+    const type: 'INCOME' | 'EXPENSE' = delta > 0 ? 'INCOME' : 'EXPENSE';
+    const amount = Math.abs(delta);
+    const fmt = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
+    const note = `余额修改：${fmt(oldBalance)} → ${fmt(newBalance)}`;
+
+    const transaction = await this.prisma.transaction.create({
+      data: {
+        ledgerId,
+        userId,
+        categoryId: null,
+        accountId,
+        type,
+        amount,
+        date: new Date(),
+        merchant: null,
+        note,
+        source: 'MANUAL',
+        aiConfidence: null,
+        aiCorrected: false,
+        isLargeExpense: false,
+        tags: [],
+        metadata: { balanceAdjustment: true, oldBalance, newBalance },
+      },
+      include: {
+        category: { select: { id: true, name: true, icon: true, color: true } },
+        user: { select: { id: true, nickname: true, avatar: true } },
+      },
+    });
+
+    // 广播给家庭成员（与 createTransaction 同构，保证前端 WS 实时刷新）
+    this.eventEmitter.emit('transaction.created', {
+      transaction,
+      ledgerId,
+      familyId,
+      userId,
+    });
+
+    this.logger.log(`余额修改记录: account=${accountId}, ${fmt(oldBalance)}→${fmt(newBalance)}, by=${userId}`);
+    return transaction;
+  }
+
+  /**
    * 交易创建/删除/更新时同步调整关联账户余额。
    *
    * 余额方向规则：

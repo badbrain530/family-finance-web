@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { isBalanceAdjustment } from './transactionUtils';
 import {
   Select,
   SelectTrigger,
@@ -181,10 +182,10 @@ export function TransactionListPage() {
 
   // 汇总信息
   const totalExpense = filteredTransactions
-    .filter((tx) => tx.type === 'expense')
+    .filter((tx) => tx.type === 'expense' && !isBalanceAdjustment(tx))
     .reduce((sum, tx) => sum + tx.amount, 0);
   const totalIncome = filteredTransactions
-    .filter((tx) => tx.type === 'income')
+    .filter((tx) => tx.type === 'income' && !isBalanceAdjustment(tx))
     .reduce((sum, tx) => sum + tx.amount, 0);
 
   if (isLoading) {
@@ -446,6 +447,9 @@ export function TransactionListPage() {
                       )}
                       {tx.aiCorrected && (
                         <Badge variant="outline" className="shrink-0 text-xs">已纠正</Badge>
+                      )}
+                      {isBalanceAdjustment(tx) && (
+                        <Badge variant="default" className="shrink-0 text-xs">余额修改</Badge>
                       )}
                     </div>
                   </TableCell>
