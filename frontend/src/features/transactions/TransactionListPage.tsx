@@ -28,11 +28,11 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useUIStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import { DEFAULT_EXPENSE_CATEGORIES } from '@/lib/categories';
 import { getTransactions, batchDeleteTransactions } from '@/services/transaction.service';
 import { EditTransactionModal } from './EditTransactionModal';
-import type { Transaction } from '@/types/transaction';
+import type { Transaction, TransactionQueryParams } from '@/types/transaction';
 
 /**
  * 交易列表页面
@@ -48,6 +48,11 @@ export function TransactionListPage() {
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterMember, setFilterMember] = useState('all');
   const [filterType, setFilterType] = useState('all');
+  // 退款/报销状态筛选
+  const [filterRefund, setFilterRefund] = useState('all');
+  const [filterReimburse, setFilterReimburse] = useState('all');
+  // 待报销 Tab
+  const [activeTab, setActiveTab] = useState<'all' | 'pending'>('all');
 
   // 分页状态
   const [page, setPage] = useState(1);
@@ -61,10 +66,26 @@ export function TransactionListPage() {
   const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
+  // 组装查询参数：待报销Tab / 报销状态下拉 / 退款状态下拉 直接走后端 QueryTransactionDto
+  // （后端已支持 refundStatus / reimbursementStatus 过滤，见 backend query-transaction.dto.ts）
+  const queryParams = useMemo<TransactionQueryParams>(() => {
+    const params: TransactionQueryParams = { page, pageSize };
+    if (activeTab === 'pending') {
+      // 待报销 Tab：强制报销状态 = PENDING
+      params.reimbursementStatus = 'PENDING';
+    } else if (filterReimburse !== 'all') {
+      params.reimbursementStatus = filterReimburse as TransactionQueryParams['reimbursementStatus'];
+    }
+    if (filterRefund !== 'all') {
+      params.refundStatus = filterRefund as TransactionQueryParams['refundStatus'];
+    }
+    return params;
+  }, [page, pageSize, activeTab, filterReimburse, filterRefund]);
+
   // TanStack Query：获取交易列表
   const { data: queryResult, isLoading, isError, error } = useQuery({
-    queryKey: ['transactions', page],
-    queryFn: () => getTransactions({ page, pageSize }),
+    queryKey: ['transactions', queryParams],
+    queryFn: () => getTransactions(queryParams),
   });
 
   // 批量删除
@@ -208,6 +229,28 @@ export function TransactionListPage() {
         </div>
       </div>
 
+      {/* 待报销 / 全部 Tab */}
+      <div className="flex items-center gap-1 mb-4 bg-surface border border-border rounded-lg p-1 w-fit">
+        <button
+          onClick={() => { setActiveTab('all'); setPage(1); }}
+          className={cn(
+            'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+            activeTab === 'all' ? 'bg-primary text-white' : 'text-text-secondary hover:text-primary',
+          )}
+        >
+          全部
+        </button>
+        <button
+          onClick={() => { setActiveTab('pending'); setPage(1); }}
+          className={cn(
+            'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+            activeTab === 'pending' ? 'bg-primary text-white' : 'text-text-secondary hover:text-primary',
+          )}
+        >
+          待报销
+        </button>
+      </div>
+
       {/* 筛选栏 */}
       <Card className="p-4 mb-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -263,6 +306,32 @@ export function TransactionListPage() {
             </SelectContent>
           </Select>
 
+          {/* 报销状态筛选（走后端 reimbursementStatus） */}
+          <Select value={filterReimburse} onValueChange={(v) => { setFilterReimburse(v); setPage(1); }}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="报销状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">报销状态</SelectItem>
+              <SelectItem value="NONE">未报销</SelectItem>
+              <SelectItem value="PENDING">待报销</SelectItem>
+              <SelectItem value="REIMBURSED">已报销</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* 退款状态筛选（走后端 refundStatus） */}
+          <Select value={filterRefund} onValueChange={(v) => { setFilterRefund(v); setPage(1); }}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="退款状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">退款状态</SelectItem>
+              <SelectItem value="NONE">未退款</SelectItem>
+              <SelectItem value="PARTIAL">部分退款</SelectItem>
+              <SelectItem value="FULL">已退款</SelectItem>
+            </SelectContent>
+          </Select>
+
           <input
             type="date"
             className="h-10 px-3 text-sm bg-surface border border-border rounded-lg outline-none focus:border-primary"
@@ -273,7 +342,7 @@ export function TransactionListPage() {
             className="h-10 px-3 text-sm bg-surface border border-border rounded-lg outline-none focus:border-primary"
           />
 
-          {(keyword || filterCategory !== 'all' || filterMember !== 'all' || filterType !== 'all') && (
+          {(keyword || filterCategory !== 'all' || filterMember !== 'all' || filterType !== 'all' || filterReimburse !== 'all' || filterRefund !== 'all' || activeTab !== 'all') && (
             <Button
               variant="ghost"
               size="sm"
@@ -282,6 +351,10 @@ export function TransactionListPage() {
                 setFilterCategory('all');
                 setFilterMember('all');
                 setFilterType('all');
+                setFilterReimburse('all');
+                setFilterRefund('all');
+                setActiveTab('all');
+                setPage(1);
               }}
               className="text-text-secondary"
             >

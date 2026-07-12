@@ -15,6 +15,7 @@ import {
   Moon,
   Sun,
   Download,
+  Upload,
   Trash2,
   AlertTriangle,
 } from 'lucide-react';
@@ -32,6 +33,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { getCurrentFamily } from '@/services/family.service';
 import { clearAllTransactions } from '@/services/transaction.service';
+import { exportBackup, restoreBackup } from '@/services/backup.service';
+import type { BackupPayload } from '@/types/transaction';
 import {
   Dialog,
   DialogContent,
@@ -106,6 +109,13 @@ export function SettingsPage() {
   // 清除数据弹窗
   const [clearDataDialogOpen, setClearDataDialogOpen] = useState(false);
 
+  // 恢复数据状态
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restorePayload, setRestorePayload] = useState<BackupPayload | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+
   // 保存个人信息
   const handleSaveProfile = async () => {
     if (!nickname.trim()) {
@@ -165,17 +175,80 @@ export function SettingsPage() {
     });
   };
 
-  // 导出数据
-  const handleExportData = () => {
-    const data = JSON.stringify({ user, exportDate: new Date().toISOString() }, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `family-finance-export-${formatDate(new Date(), 'yyyyMMdd')}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-    toast({ title: '数据已导出', variant: 'success' });
+  // 导出数据（真实调用 backupService.exportBackup → Blob 下载全量 JSON）
+  const handleExportData = async () => {
+    try {
+      const family = await getCurrentFamily();
+      await exportBackup(family.id);
+      toast({ title: '数据已导出', variant: 'success' });
+    } catch (err: any) {
+      toast({
+        title: '导出失败',
+        description: err?.message || '请稍后重试',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // 读取并解析备份 JSON 文件
+  const handleRestoreFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result));
+        if (!parsed || !parsed.data) {
+          throw new Error('备份文件格式不合法（缺少 data 字段）');
+        }
+        setRestorePayload(parsed as BackupPayload);
+        setRestoreError(null);
+        toast({
+          title: '已读取备份文件',
+          description: `导出时间 ${parsed.exportedAt || '未知'}`,
+          variant: 'success',
+        });
+      } catch (err: any) {
+        setRestorePayload(null);
+        setRestoreError(err?.message || '解析失败');
+        toast({
+          title: '备份文件解析失败',
+          description: err?.message || '请检查文件格式',
+          variant: 'destructive',
+        });
+      }
+    };
+    reader.readAsText(file);
+    setRestoreFile(file);
+    e.target.value = '';
+  };
+
+  // 二次确认后执行覆盖式恢复
+  const handleConfirmRestore = async () => {
+    if (!restorePayload) return;
+    setRestoreDialogOpen(false);
+    setRestoring(true);
+    try {
+      const family = await getCurrentFamily();
+      const res = await restoreBackup({ familyId: family.id, payload: restorePayload, mode: 'overwrite' });
+      const restored = res.restored || res.counts || {};
+      const total = Object.values(restored).reduce<number>((sum, n) => sum + (n || 0), 0);
+      toast({
+        title: '恢复成功',
+        description: `共恢复 ${total} 条数据（覆盖式）`,
+        variant: 'success',
+      });
+      setRestorePayload(null);
+      setRestoreFile(null);
+    } catch (err: any) {
+      toast({
+        title: '恢复失败',
+        description: err?.message || '请稍后重试',
+        variant: 'destructive',
+      });
+    } finally {
+      setRestoring(false);
+    }
   };
 
   // 退出登录
@@ -689,6 +762,62 @@ export function SettingsPage() {
                 </CardContent>
               </Card>
 
+              {/* 数据恢复 */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Upload size={16} className="text-primary" />
+                    恢复数据
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-text-secondary">
+                    从导出的 JSON 备份文件恢复数据。<span className="text-expense font-medium">P0 仅支持覆盖式恢复</span>：将清空当前家庭下的同类数据后重新写入，请谨慎操作。
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="file"
+                      accept="application/json,.json"
+                      onChange={handleRestoreFile}
+                      className="hidden"
+                      id="restore-file-input"
+                    />
+                    <label htmlFor="restore-file-input">
+                      <Button variant="outline" type="button" className="cursor-pointer" disabled={restoring}>
+                        <Upload size={14} className="mr-1.5" />
+                        选择备份文件
+                      </Button>
+                    </label>
+                    {restoreFile && (
+                      <span className="text-sm text-text-secondary truncate max-w-[200px]">
+                        {restoreFile.name}
+                      </span>
+                    )}
+                  </div>
+                  {restoreError && (
+                    <p className="text-xs text-expense">{restoreError}</p>
+                  )}
+                  {restorePayload && (
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-surface border border-border">
+                      <div className="text-sm">
+                        <p className="text-text-primary font-medium">已就绪，等待恢复</p>
+                        <p className="text-xs text-text-tertiary mt-0.5">
+                          备份家庭：{restorePayload.familyId} · 版本：{restorePayload.version}
+                        </p>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={restoring}
+                        onClick={() => setRestoreDialogOpen(true)}
+                      >
+                        {restoring ? '恢复中...' : '恢复'}
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               {/* 危险区域 */}
               <Card className="border-expense/20">
                 <CardHeader>
@@ -758,6 +887,33 @@ export function SettingsPage() {
             </Button>
             <Button variant="destructive" onClick={handleClearAllData}>
               确认清除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 恢复数据二次确认弹窗 */}
+      <Dialog open={restoreDialogOpen} onOpenChange={setRestoreDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-expense">
+              <AlertTriangle size={18} />
+              确认覆盖式恢复
+            </DialogTitle>
+            <DialogDescription>
+              此操作将<strong>清空当前家庭</strong>下的账本、分类、账户、预算、心愿、月报与交易数据，并用备份文件内容<strong>整体覆盖写入</strong>。该操作不可撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRestoreDialogOpen(false)}
+              disabled={restoring}
+            >
+              取消
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmRestore} disabled={restoring}>
+              {restoring ? '恢复中...' : '确认恢复'}
             </Button>
           </DialogFooter>
         </DialogContent>

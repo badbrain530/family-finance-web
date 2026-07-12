@@ -41,6 +41,15 @@ const CategoriesManagePage = lazy(() => import('@/features/categories/Categories
 // 通知中心
 const NotificationsPage = lazy(() => import('@/features/notifications/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
 
+// 周期记账
+const RecurringPage = lazy(() => import('@/features/recurring/RecurringPage').then(m => ({ default: m.RecurringPage })));
+
+// 贷款管理
+const LoansPage = lazy(() => import('@/features/loans/LoansPage').then(m => ({ default: m.LoansPage })));
+
+// 待报销
+const ReimbursementsPage = lazy(() => import('@/features/reimbursements/ReimbursementsPage').then(m => ({ default: m.ReimbursementsPage })));
+
 /**
  * 受保护路由包装器
  * 未登录用户重定向到登录页
@@ -114,6 +123,9 @@ export default function App() {
           <Route path="categories" element={<CategoriesManagePage />} />
           <Route path="reports" element={<MonthlyReportPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="recurring" element={<RecurringPage />} />
+          <Route path="loans" element={<LoansPage />} />
+          <Route path="reimbursements" element={<ReimbursementsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 

@@ -13,7 +13,11 @@ import { CreateTransactionDto, UpdateTransactionDto } from './dto/create-transac
 import { QueryTransactionDto } from './dto/query-transaction.dto';
 import { BatchOperationDto, BatchOperationResult } from './dto/batch-operation.dto';
 import { QuickRecordDto, ParsedTransaction, QuickRecordResult } from './dto/quick-record.dto';
+import { RefundTransactionDto } from './dto/refund-transaction.dto';
+import { MarkReimbursementDto, ConfirmReimbursementDto } from './dto/reimbursement.dto';
+import { CreateInstallmentDto } from './dto/create-installment.dto';
 import { nanoid } from 'nanoid';
+import dayjs from 'dayjs';
 
 /** 大额支出阈值（元） */
 const LARGE_EXPENSE_THRESHOLD = 1000;
@@ -124,6 +128,12 @@ export class TransactionsService {
         aiCorrected: false,
         isLargeExpense,
         tags: dto.tags || [],
+        // ===== 二期扩展字段（均可空，向原交易/反向交易关联） =====
+        refundOfId: dto.refundOfId || null,
+        reimbursementOfId: dto.reimbursementOfId || null,
+        installmentGroupId: dto.installmentGroupId || null,
+        installmentSeq: dto.installmentSeq ?? null,
+        installmentTotal: dto.installmentTotal ?? null,
       },
       include: {
         category: {
@@ -224,6 +234,17 @@ export class TransactionsService {
         { merchant: { contains: query.keyword, mode: 'insensitive' } },
         { note: { contains: query.keyword, mode: 'insensitive' } },
       ];
+    }
+
+    // 二期扩展筛选：退款状态 / 报销状态 / 分期
+    if (query.refundStatus) {
+      where.refundStatus = query.refundStatus.toUpperCase();
+    }
+    if (query.reimbursementStatus) {
+      where.reimbursementStatus = query.reimbursementStatus.toUpperCase();
+    }
+    if (query.hasInstallment) {
+      where.installmentGroupId = { not: null };
     }
 
     // 如果指定了账本，验证权限
@@ -402,6 +423,269 @@ export class TransactionsService {
     });
 
     return { success: true };
+  }
+
+  // ==================== 退款（反向 INCOME 交易） ====================
+
+  /**
+   * 退款：为指定支出交易生成一笔反向 INCOME 交易，并回写原交易的累计退款与状态。
+   * 校验：仅 EXPENSE 可退；refundedAmount + amount <= 原额。
+   * 反向交易复用 createTransaction → 自动账户余额校正 + WS 事件。
+   *
+   * @param transactionId 原支出交易ID
+   * @param userId 操作者用户ID
+   * @param dto 退款信息
+   * @returns { original, refund }
+   */
+  async refund(transactionId: string, userId: string, dto: RefundTransactionDto): Promise<{
+    original: any;
+    refund: any;
+  }> {
+    // 取原交易（含权限校验：familyId 隔离）
+    const original = await this.getTransaction(transactionId, userId);
+
+    if (original.type !== 'EXPENSE') {
+      throw new BadRequestException('仅支出交易可退款');
+    }
+
+    const originalAmount = Number(original.amount);
+    const alreadyRefunded = Number(original.refundedAmount) || 0;
+    if (alreadyRefunded + dto.amount > originalAmount + 0.001) {
+      throw new BadRequestException(
+        `退款金额超出可退余额（原额 ${originalAmount}，已退 ${alreadyRefunded}）`,
+      );
+    }
+
+    // 退款账户默认取原支出账户
+    const refundAccountId = dto.accountId !== undefined ? dto.accountId : original.accountId;
+
+    // 生成反向 INCOME 交易（走 createTransaction 内部逻辑）
+    const refundTx = await this.createTransaction(userId, {
+      ledgerId: original.ledgerId,
+      categoryId: original.categoryId,
+      accountId: refundAccountId ?? null,
+      type: 'income',
+      amount: dto.amount,
+      date: dto.date,
+      merchant: original.merchant || null,
+      note: dto.note || `退款：${original.merchant || original.note || '支出'}`,
+      source: 'manual',
+      currency: original.currency,
+      refundOfId: original.id,
+    } as CreateTransactionDto);
+
+    // 回写原交易累计退款与状态（NONE/PARTIAL/FULL）
+    const newRefunded = Math.round((alreadyRefunded + dto.amount) * 100) / 100;
+    const refundStatus = newRefunded >= originalAmount - 0.001 ? 'FULL' : 'PARTIAL';
+    const updated = await this.prisma.transaction.update({
+      where: { id: original.id },
+      data: { refundedAmount: newRefunded, refundStatus },
+      include: {
+        category: { select: { id: true, name: true, icon: true, color: true } },
+        user: { select: { id: true, nickname: true, avatar: true } },
+      },
+    });
+
+    this.logger.log(
+      `退款: original=${original.id}, refund=${refundTx.id}, amount=${dto.amount}, status=${refundStatus}, by=${userId}`,
+    );
+
+    return { original: updated, refund: refundTx };
+  }
+
+  // ==================== 报销（状态标记 + 反向 INCOME 交易） ====================
+
+  /**
+   * 标记待报销：仅设置 reimbursementStatus=PENDING，不生成交易。
+   * @returns 更新后的原交易
+   */
+  async markReimbursement(
+    transactionId: string,
+    userId: string,
+    dto: MarkReimbursementDto,
+  ): Promise<any> {
+    const original = await this.getTransaction(transactionId, userId);
+    if (original.type !== 'EXPENSE') {
+      throw new BadRequestException('仅支出交易可标记报销');
+    }
+    if (original.reimbursementStatus === 'REIMBURSED') {
+      throw new BadRequestException('该交易已报销，不可重复标记');
+    }
+
+    const baseMeta =
+      original.metadata && typeof original.metadata === 'object' && !Array.isArray(original.metadata)
+        ? (original.metadata as Record<string, unknown>)
+        : {};
+
+    const updated = await this.prisma.transaction.update({
+      where: { id: original.id },
+      data: {
+        reimbursementStatus: 'PENDING',
+        // 来源存入 metadata（不新增枚举/列），source=family|company
+        metadata: {
+          ...baseMeta,
+          reimbursementSource: dto.source || 'family',
+        },
+      },
+      include: {
+        category: { select: { id: true, name: true, icon: true, color: true } },
+        user: { select: { id: true, nickname: true, avatar: true } },
+      },
+    });
+
+    this.eventEmitter.emit('transaction.updated', {
+      transaction: updated,
+      ledgerId: original.ledgerId,
+      familyId: original.ledger.familyId,
+      userId,
+    });
+
+    this.logger.log(`标记待报销: original=${original.id}, source=${dto.source || 'family'}, by=${userId}`);
+    return updated;
+  }
+
+  /**
+   * 取消待报销标记：PENDING → NONE
+   */
+  async cancelReimbursement(transactionId: string, userId: string): Promise<any> {
+    const original = await this.getTransaction(transactionId, userId);
+    if (original.reimbursementStatus !== 'PENDING') {
+      throw new BadRequestException('该交易当前不处于待报销状态');
+    }
+
+    const updated = await this.prisma.transaction.update({
+      where: { id: original.id },
+      data: { reimbursementStatus: 'NONE' },
+      include: {
+        category: { select: { id: true, name: true, icon: true, color: true } },
+        user: { select: { id: true, nickname: true, avatar: true } },
+      },
+    });
+
+    this.eventEmitter.emit('transaction.updated', {
+      transaction: updated,
+      ledgerId: original.ledgerId,
+      familyId: original.ledger.familyId,
+      userId,
+    });
+
+    return updated;
+  }
+
+  /**
+   * 确认报销：生成 type=INCOME 反向交易（reimbursementOfId=原id），原交易置 REIMBURSED。
+   * 报销收入计入总收入，但不冲减支出（与退款语义分离，§7.2）。
+   * @returns { original, reimbursement }
+   */
+  async confirmReimbursement(
+    transactionId: string,
+    userId: string,
+    dto: ConfirmReimbursementDto,
+  ): Promise<{ original: any; reimbursement: any }> {
+    const original = await this.getTransaction(transactionId, userId);
+    if (original.type !== 'EXPENSE') {
+      throw new BadRequestException('仅支出交易可报销');
+    }
+    if (original.reimbursementStatus === 'REIMBURSED') {
+      throw new BadRequestException('该交易已报销');
+    }
+
+    const source =
+      (original.metadata && (original.metadata as any).reimbursementSource) || 'family';
+    const reimbursementAccountId =
+      dto.accountId !== undefined ? dto.accountId : original.accountId;
+
+    // 生成反向 INCOME 交易（走 createTransaction 内部逻辑）
+    const reimbursementTx = await this.createTransaction(userId, {
+      ledgerId: original.ledgerId,
+      categoryId: original.categoryId,
+      accountId: reimbursementAccountId ?? null,
+      type: 'income',
+      amount: Number(original.amount),
+      date: dto.date,
+      merchant: original.merchant || null,
+      note: dto.note || `报销：${original.merchant || original.note || '支出'}`,
+      source: 'manual',
+      currency: original.currency,
+      reimbursementOfId: original.id,
+    } as CreateTransactionDto);
+
+    const baseMeta =
+      original.metadata && typeof original.metadata === 'object' && !Array.isArray(original.metadata)
+        ? (original.metadata as Record<string, unknown>)
+        : {};
+
+    const updated = await this.prisma.transaction.update({
+      where: { id: original.id },
+      data: {
+        reimbursementStatus: 'REIMBURSED',
+        metadata: {
+          ...baseMeta,
+          reimbursementSource: source,
+          reimbursementTxId: reimbursementTx.id,
+        },
+      },
+      include: {
+        category: { select: { id: true, name: true, icon: true, color: true } },
+        user: { select: { id: true, nickname: true, avatar: true } },
+      },
+    });
+
+    this.logger.log(
+      `确认报销: original=${original.id}, reimbursement=${reimbursementTx.id}, source=${source}, by=${userId}`,
+    );
+
+    return { original: updated, reimbursement: reimbursementTx };
+  }
+
+  // ==================== 分期付款（独立 N 笔 EXPENSE） ====================
+
+  /**
+   * 分期付款：一次生成 N 笔独立 EXPENSE 交易（同 installmentGroupId，seq=1..N，日期按月递增）。
+   * 每笔复用 createTransaction → 自动账户余额校正 + WS 事件。
+   *
+   * @param userId 操作者用户ID
+   * @param dto 分期信息
+   * @returns { groupId, transactions }
+   */
+  async createInstallment(userId: string, dto: CreateInstallmentDto): Promise<{
+    groupId: string;
+    transactions: any[];
+  }> {
+    const groupId = nanoid();
+    const perAmount = Math.round((dto.totalAmount / dto.periods) * 100) / 100;
+    const start = dayjs(dto.startMonth + '-01').startOf('month');
+
+    const transactions: any[] = [];
+
+    for (let seq = 1; seq <= dto.periods; seq++) {
+      const isLast = seq === dto.periods;
+      // 末期校正：使 N 期总额精确等于 totalAmount（其余各期为 round(total/periods)）
+      const amount = isLast
+        ? Math.round((dto.totalAmount - perAmount * (dto.periods - 1)) * 100) / 100
+        : perAmount;
+      const date = start.add(seq - 1, 'month').startOf('month').toDate();
+      const tx = await this.createTransaction(userId, {
+        ledgerId: dto.ledgerId,
+        categoryId: dto.categoryId || null,
+        accountId: dto.accountId,
+        type: 'expense',
+        amount,
+        date: date.toISOString(),
+        merchant: dto.merchant || null,
+        note: dto.note || `第${seq}/${dto.periods}期分期`,
+        source: 'manual',
+        installmentGroupId: groupId,
+        installmentSeq: seq,
+        installmentTotal: dto.periods,
+      } as CreateTransactionDto);
+      transactions.push(tx);
+    }
+
+    this.logger.log(
+      `分期生成: groupId=${groupId}, periods=${dto.periods}, total=${dto.totalAmount}, by=${userId}`,
+    );
+    return { groupId, transactions };
   }
 
   // ==================== 快捷记账（NLP解析） ====================

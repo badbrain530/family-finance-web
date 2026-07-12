@@ -27,6 +27,9 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { WishGoalsModule } from './modules/wish-goals/wish-goals.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { RecurringModule } from './modules/recurring/recurring.module';
+import { LoansModule } from './modules/loans/loans.module';
+import { BackupModule } from './modules/backup/backup.module';
 
 // 全局JWT认证守卫
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
@@ -84,6 +87,11 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     WishGoalsModule,
     DashboardModule,
     ReportsModule,
+
+    // ===== P0 二期新增模块（周期/按揭/备份） =====
+    RecurringModule,
+    LoansModule,
+    BackupModule,
   ],
   controllers: [HealthController],
   providers: [

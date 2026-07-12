@@ -16,6 +16,9 @@ import { QueryTransactionDto } from './dto/query-transaction.dto';
 import { BatchOperationDto } from './dto/batch-operation.dto';
 import { QuickRecordDto } from './dto/quick-record.dto';
 import { ClearTransactionsDto } from './dto/clear-transactions.dto';
+import { RefundTransactionDto } from './dto/refund-transaction.dto';
+import { MarkReimbursementDto, ConfirmReimbursementDto } from './dto/reimbursement.dto';
+import { CreateInstallmentDto } from './dto/create-installment.dto';
 
 /**
  * 交易控制器
@@ -94,6 +97,19 @@ export class TransactionsController {
   }
 
   /**
+   * 分期付款：一次生成 N 笔独立 EXPENSE 交易
+   * POST /api/transactions/installment
+   * 注意：静态路由必须声明在 @Get(':id') 之前
+   */
+  @Post('installment')
+  async createInstallment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateInstallmentDto,
+  ) {
+    return this.transactionsService.createInstallment(user.userId, dto);
+  }
+
+  /**
    * 获取交易详情
    * GET /api/transactions/:id
    */
@@ -128,6 +144,57 @@ export class TransactionsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.transactionsService.deleteTransaction(id, user.userId);
+  }
+
+  /**
+   * 退款：为指定支出生成反向 INCOME 交易
+   * POST /api/transactions/:id/refund
+   */
+  @Post(':id/refund')
+  async refundTransaction(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RefundTransactionDto,
+  ) {
+    return this.transactionsService.refund(id, user.userId, dto);
+  }
+
+  /**
+   * 标记待报销
+   * POST /api/transactions/:id/reimbursement/mark
+   */
+  @Post(':id/reimbursement/mark')
+  async markReimbursement(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: MarkReimbursementDto,
+  ) {
+    return this.transactionsService.markReimbursement(id, user.userId, dto);
+  }
+
+  /**
+   * 取消待报销标记
+   * POST /api/transactions/:id/reimbursement/cancel
+   */
+  @Post(':id/reimbursement/cancel')
+  async cancelReimbursement(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.transactionsService.cancelReimbursement(id, user.userId);
+  }
+
+  /**
+   * 确认报销：生成 INCOME 反向交易并置 REIMBURSED
+   * POST /api/transactions/:id/reimbursement/confirm
+   */
+  @Post(':id/reimbursement/confirm')
+  async confirmReimbursement(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ConfirmReimbursementDto,
+  ) {
+    return this.transactionsService.confirmReimbursement(id, user.userId, dto);
   }
 
   /**

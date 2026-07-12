@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FamiliesService } from '../families/families.service';
+import { calcNetExpense, sumRefundAmount } from '../../common/statistics/net-expense';
 import dayjs from 'dayjs';
 
 /** 仪表盘返回的数据结构 */
@@ -174,7 +175,9 @@ export class DashboardService {
     });
 
     const totalIncome = Number(incomeResult._sum.amount) || 0;
-    const totalExpense = Number(expenseResult._sum.amount) || 0;
+    // 净支出 = 原支出 − 当期退款（§7.2 统一口径）
+    const refundThisMonth = await sumRefundAmount(this.prisma, familyId, monthStart, monthEnd);
+    const totalExpense = calcNetExpense(Number(expenseResult._sum.amount) || 0, refundThisMonth);
     const balance = totalIncome - totalExpense;
 
     // 上月结余
@@ -201,7 +204,9 @@ export class DashboardService {
     });
 
     const prevIncome = Number(prevIncomeResult._sum.amount) || 0;
-    const prevExpense = Number(prevExpenseResult._sum.amount) || 0;
+    // 上月净支出同样扣退
+    const refundPrevMonth = await sumRefundAmount(this.prisma, familyId, prevMonthStart, prevMonthEnd);
+    const prevExpense = calcNetExpense(Number(prevExpenseResult._sum.amount) || 0, refundPrevMonth);
     const previousBalance = prevIncome - prevExpense;
 
     let balanceTrend: 'up' | 'down' | 'flat' = 'flat';
@@ -253,7 +258,9 @@ export class DashboardService {
       _sum: { amount: true },
     });
 
-    const totalSpent = Number(expenseResult._sum.amount) || 0;
+    // 预算消耗同样采用净支出口径（扣减退款）
+    const refund = await sumRefundAmount(this.prisma, familyId, monthStart, monthEnd);
+    const totalSpent = calcNetExpense(Number(expenseResult._sum.amount) || 0, refund);
     const remaining = totalBudget - totalSpent;
     const percentage = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
@@ -343,10 +350,14 @@ export class DashboardService {
         _sum: { amount: true },
       });
 
+      // 收支趋势的支出同样采用净口径（扣退）
+      const refundForMonth = await sumRefundAmount(this.prisma, familyId, monthStart, monthEnd);
+      const netExpense = calcNetExpense(Number(expenseResult._sum.amount) || 0, refundForMonth);
+
       trend.push({
         month: monthLabel,
         income: Math.round((Number(incomeResult._sum.amount) || 0) * 100) / 100,
-        expense: Math.round((Number(expenseResult._sum.amount) || 0) * 100) / 100,
+        expense: Math.round(netExpense * 100) / 100,
       });
     }
 
@@ -402,6 +413,33 @@ export class DashboardService {
         });
       }
       totalExpense += amount;
+    }
+
+    // 净支出口径：按分类扣减当期退款（退款交易继承原支出分类）
+    const refunds = await this.prisma.transaction.findMany({
+      where: {
+        ledger: { familyId },
+        type: 'INCOME',
+        refundOfId: { not: null },
+        date: { gte: monthStart, lte: monthEnd },
+      },
+      select: { amount: true, categoryId: true },
+    });
+    for (const r of refunds) {
+      const catId = r.categoryId || '__uncategorized__';
+      const existing = categoryMap.get(catId);
+      if (existing) {
+        existing.amount -= Number(r.amount);
+      } else {
+        // 退款分类在支出中无对应项时，以该分类计入（负向），保证汇总自洽
+        categoryMap.set(catId, {
+          categoryId: r.categoryId || catId,
+          name: '未分类',
+          color: '#A8A8A8',
+          amount: -Number(r.amount),
+        });
+      }
+      totalExpense -= Number(r.amount);
     }
 
     // 转换为数组并计算百分比
@@ -490,6 +528,23 @@ export class DashboardService {
           expense: tx.type === 'EXPENSE' ? amount : 0,
           count: 1,
         });
+      }
+    }
+
+    // 净支出：按成员扣减其发起的退款（退款交易 user 同原交易记账人）
+    const refunds = await this.prisma.transaction.findMany({
+      where: {
+        ledger: { familyId },
+        type: 'INCOME',
+        refundOfId: { not: null },
+        date: { gte: monthStart, lte: monthEnd },
+      },
+      select: { amount: true, userId: true, user: { select: { nickname: true } } },
+    });
+    for (const r of refunds) {
+      const existing = memberMap.get(r.userId);
+      if (existing) {
+        existing.expense -= Number(r.amount);
       }
     }
 

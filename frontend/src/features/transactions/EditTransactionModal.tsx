@@ -9,6 +9,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectTrigger,
@@ -19,7 +21,7 @@ import {
   SelectSeparator,
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/toaster';
-import { updateTransaction } from '@/services/transaction.service';
+import { updateTransaction, refundTransaction, markReimbursement, cancelReimbursement, confirmReimbursement } from '@/services/transaction.service';
 import { getCategories } from '@/services/category.service';
 import { getAccounts } from '@/services/account.service';
 import { getCurrentFamily } from '@/services/family.service';
@@ -27,6 +29,7 @@ import { formatDate } from '@/lib/utils';
 import type { Transaction, Category, UpdateTransactionRequest } from '@/types/transaction';
 import { TransactionType } from '@/types/transaction';
 import type { Account } from '@/types/account';
+import { RotateCcw, HandCoins } from 'lucide-react';
 
 /** 收入类一级分类名称（用于按交易类型过滤分类树） */
 const INCOME_ROOT_NAMES = ['薪资收入', '投资收益', '兼职收入', '其他收入'];
@@ -60,6 +63,16 @@ export function EditTransactionModal({
   const [accountId, setAccountId] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // 退款/报销操作区状态
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundDate, setRefundDate] = useState('');
+  const [refundAccount, setRefundAccount] = useState('');
+  const [reimbSource, setReimbSource] = useState<'family' | 'company'>('family');
+  const [reimbDate, setReimbDate] = useState('');
+  const [reimbAccount, setReimbAccount] = useState('');
+  const [acting, setActing] = useState(false);
+
   // 真实数据
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -75,6 +88,15 @@ export function EditTransactionModal({
     setNote(transaction.note || '');
     setCategoryId(transaction.categoryId || '');
     setAccountId(transaction.accountId || '');
+
+    // 退款/报销区默认填充
+    setRefundOpen(false);
+    setRefundAmount(transaction.amount ? String(transaction.amount) : '');
+    setRefundDate(formatDate(transaction.date, 'yyyy-MM-dd'));
+    setRefundAccount(transaction.accountId || '');
+    setReimbSource('family');
+    setReimbDate(formatDate(new Date().toISOString(), 'yyyy-MM-dd'));
+    setReimbAccount(transaction.accountId || '');
 
     // 并行加载账户与分类（按 familyId 隔离）
     (async () => {
@@ -256,6 +278,221 @@ export function EditTransactionModal({
               placeholder="备注（可选）"
             />
           </div>
+
+          {/* ===== 退款 / 报销 操作区（仅支出交易） ===== */}
+          {transaction?.type === TransactionType.EXPENSE && (
+            <div className="space-y-3 rounded-lg border border-border p-3 bg-surface/50">
+              {/* 退款状态 */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-text-primary">退款</span>
+                <Badge variant={
+                  transaction.refundStatus === 'FULL' ? 'success'
+                    : transaction.refundStatus === 'PARTIAL' ? 'default' : 'outline'
+                }>
+                  {transaction.refundStatus === 'FULL' ? '已全额退款'
+                    : transaction.refundStatus === 'PARTIAL' ? '部分退款'
+                    : '未退款'}
+                  {transaction.refundedAmount ? `（${transaction.refundedAmount}/${transaction.amount}）` : ''}
+                </Badge>
+              </div>
+
+              {!refundOpen ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setRefundOpen(true)}
+                  disabled={transaction.refundStatus === 'FULL'}
+                >
+                  <RotateCcw size={14} className="mr-1.5" />
+                  发起退款
+                </Button>
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label>退款金额</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={refundAmount}
+                        onChange={(e) => setRefundAmount(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>退款日期</Label>
+                      <Input type="date" value={refundDate} onChange={(e) => setRefundDate(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>退款账户</Label>
+                    <Select value={refundAccount} onValueChange={setRefundAccount}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择账户" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {accounts.map((acc) => (
+                          <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      disabled={acting}
+                      onClick={async () => {
+                        const amt = parseFloat(refundAmount);
+                        if (isNaN(amt) || amt <= 0) {
+                          toast({ title: '请输入有效退款金额', variant: 'destructive' });
+                          return;
+                        }
+                        setActing(true);
+                        try {
+                          await refundTransaction(transaction.id, {
+                            amount: amt,
+                            date: new Date(refundDate).toISOString(),
+                            accountId: refundAccount || null,
+                          });
+                          toast({ title: '退款成功', variant: 'success' });
+                          onSaved();
+                          onOpenChange(false);
+                        } catch (err: any) {
+                          toast({ title: '退款失败', description: err?.message, variant: 'destructive' });
+                        } finally {
+                          setActing(false);
+                        }
+                      }}
+                    >
+                      确认退款
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setRefundOpen(false)}>取消</Button>
+                  </div>
+                </div>
+              )}
+
+              <Separator />
+
+              {/* 报销状态 */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-text-primary">报销</span>
+                <Badge variant={
+                  transaction.reimbursementStatus === 'REIMBURSED' ? 'success'
+                    : transaction.reimbursementStatus === 'PENDING' ? 'default' : 'outline'
+                }>
+                  {transaction.reimbursementStatus === 'REIMBURSED' ? '已报销'
+                    : transaction.reimbursementStatus === 'PENDING' ? '待报销' : '未报销'}
+                </Badge>
+              </div>
+
+              {transaction.reimbursementStatus === 'NONE' && (
+                <div className="flex items-center gap-2">
+                  <Select value={reimbSource} onValueChange={(v: 'family' | 'company') => setReimbSource(v)}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="family">家庭共同账户</SelectItem>
+                      <SelectItem value="company">公司/外部</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    disabled={acting}
+                    onClick={async () => {
+                      setActing(true);
+                      try {
+                        await markReimbursement(transaction.id, reimbSource);
+                        toast({ title: '已标记为待报销', variant: 'success' });
+                        onSaved();
+                        onOpenChange(false);
+                      } catch (err: any) {
+                        toast({ title: '标记失败', description: err?.message, variant: 'destructive' });
+                      } finally {
+                        setActing(false);
+                      }
+                    }}
+                  >
+                    <HandCoins size={14} className="mr-1.5" />
+                    标记待报销
+                  </Button>
+                </div>
+              )}
+
+              {transaction.reimbursementStatus === 'PENDING' && (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label>到账日期</Label>
+                      <Input type="date" value={reimbDate} onChange={(e) => setReimbDate(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>入账账户</Label>
+                      <Select value={reimbAccount} onValueChange={setReimbAccount}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="选择账户" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {accounts.map((acc) => (
+                            <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      disabled={acting}
+                      onClick={async () => {
+                        setActing(true);
+                        try {
+                          await confirmReimbursement(transaction.id, {
+                            date: new Date(reimbDate).toISOString(),
+                            accountId: reimbAccount || null,
+                          });
+                          toast({ title: '报销成功', variant: 'success' });
+                          onSaved();
+                          onOpenChange(false);
+                        } catch (err: any) {
+                          toast({ title: '报销失败', description: err?.message, variant: 'destructive' });
+                        } finally {
+                          setActing(false);
+                        }
+                      }}
+                    >
+                      确认报销
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={acting}
+                      onClick={async () => {
+                        setActing(true);
+                        try {
+                          await cancelReimbursement(transaction.id);
+                          toast({ title: '已取消待报销', variant: 'success' });
+                          onSaved();
+                          onOpenChange(false);
+                        } catch (err: any) {
+                          toast({ title: '操作失败', description: err?.message, variant: 'destructive' });
+                        } finally {
+                          setActing(false);
+                        }
+                      }}
+                    >
+                      取消标记
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter>

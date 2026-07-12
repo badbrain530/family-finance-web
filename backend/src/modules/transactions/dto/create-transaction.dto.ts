@@ -80,6 +80,35 @@ export class CreateTransactionDto {
   /** 自定义标签 */
   @IsOptional()
   readonly tags?: string[];
+
+  // ===== 二期扩展（均可空，向后兼容 whitelist） =====
+
+  /** 退款反向交易：指向原支出ID（仅退款交易使用） */
+  @IsOptional()
+  @IsString()
+  readonly refundOfId?: string | null;
+
+  /** 报销反向交易：指向原支出ID（仅报销收入交易使用） */
+  @IsOptional()
+  @IsString()
+  readonly reimbursementOfId?: string | null;
+
+  /** 分期分组标识（分期交易同组共用，关联 N 笔独立 EXPENSE） */
+  @IsOptional()
+  @IsString()
+  readonly installmentGroupId?: string | null;
+
+  /** 分期第几期（1..N） */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  readonly installmentSeq?: number | null;
+
+  /** 分期总期数 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  readonly installmentTotal?: number | null;
 }
 
 /**

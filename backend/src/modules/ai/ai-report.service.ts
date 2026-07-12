@@ -12,6 +12,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
+import { calcNetExpense, sumRefundAmount } from '../../common/statistics/net-expense';
 import { QwenProvider } from './providers/qwen.provider';
 
 /** 大额支出阈值（元） */
@@ -184,6 +185,10 @@ export class AiReportService {
       }
     }
 
+    // 月报总支出采用净口径（原额 − 当期退款，§7.2）
+    const refundAmount = await sumRefundAmount(this.prisma, familyId, startDate, endDate);
+    totalExpense = calcNetExpense(totalExpense, refundAmount);
+
     return { transactions, totalIncome, totalExpense };
   }
 
@@ -232,6 +237,27 @@ export class AiReportService {
         categoryId,
         (prevCategoryMap.get(categoryId) || 0) + Number(tx.amount),
       );
+    }
+
+    // 净口径：扣除当期退款（按分类）
+    // 通过 ledger.familyId 隔离，保证仅统计该家庭数据（复用 §7.2 同一隔离口径，避免 ledgerIds 作用域问题）
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 1);
+    const refunds = await this.prisma.transaction.findMany({
+      where: {
+        ledger: { familyId },
+        type: 'INCOME',
+        refundOfId: { not: null },
+        date: { gte: startDate, lt: endDate },
+      },
+      select: { amount: true, categoryId: true },
+    });
+    for (const r of refunds) {
+      const categoryId = r.categoryId || 'uncategorized';
+      const cat = categoryMap.get(categoryId);
+      if (cat) {
+        cat.amount -= Number(r.amount);
+      }
     }
 
     // 计算总支出（用于百分比）

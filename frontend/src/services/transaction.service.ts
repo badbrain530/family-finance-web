@@ -71,3 +71,45 @@ export function undoTransaction(id: string, undoToken: string): Promise<{ succes
 export function clearAllTransactions(data: { familyId: string; confirm: boolean }): Promise<{ deleted: number }> {
   return post<{ deleted: number }>('/transactions/clear', data);
 }
+
+// ==================== 二期：退款 / 报销 / 分期 ====================
+
+/** 退款：为指定支出生成反向 INCOME 交易 */
+export function refundTransaction(
+  id: string,
+  data: { amount: number; date: string; accountId?: string | null; note?: string },
+): Promise<{ original: Transaction; refund: Transaction }> {
+  return post(`/transactions/${id}/refund`, data);
+}
+
+/** 标记待报销 */
+export function markReimbursement(id: string, source?: 'family' | 'company'): Promise<Transaction> {
+  return post(`/transactions/${id}/reimbursement/mark`, { source });
+}
+
+/** 取消待报销 */
+export function cancelReimbursement(id: string): Promise<Transaction> {
+  return post(`/transactions/${id}/reimbursement/cancel`, {});
+}
+
+/** 确认报销：生成 INCOME 反向交易 */
+export function confirmReimbursement(
+  id: string,
+  data: { date: string; accountId?: string | null; note?: string },
+): Promise<{ original: Transaction; reimbursement: Transaction }> {
+  return post(`/transactions/${id}/reimbursement/confirm`, data);
+}
+
+/** 分期付款：一次生成 N 笔 EXPENSE */
+export function createInstallment(data: {
+  ledgerId: string;
+  categoryId?: string | null;
+  accountId: string;
+  totalAmount: number;
+  periods: number;
+  startMonth: string;
+  merchant?: string;
+  note?: string;
+}): Promise<{ groupId: string; transactions: Transaction[] }> {
+  return post('/transactions/installment', data);
+}

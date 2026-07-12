@@ -61,10 +61,109 @@ export interface Transaction {
   currency: string;
   metadata: Record<string, any> | null;
   tags: string[];
+  // ===== 二期扩展字段（退款/报销/分期） =====
+  installmentGroupId?: string | null;
+  installmentSeq?: number | null;
+  installmentTotal?: number | null;
+  refundOfId?: string | null;
+  refundedAmount?: number | null;
+  refundStatus?: 'NONE' | 'PARTIAL' | 'FULL';
+  reimbursementOfId?: string | null;
+  reimbursementStatus?: 'NONE' | 'PENDING' | 'REIMBURSED';
   // 关联数据
   category?: Category;
   account?: import('./account').Account;
   user?: import('./user').User;
+}
+
+/** 退款状态枚举 */
+export enum RefundStatus {
+  NONE = 'NONE',
+  PARTIAL = 'PARTIAL',
+  FULL = 'FULL',
+}
+
+/** 报销状态枚举 */
+export enum ReimburseStatus {
+  NONE = 'NONE',
+  PENDING = 'PENDING',
+  REIMBURSED = 'REIMBURSED',
+}
+
+/** 周期频率 */
+export type Frequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+
+/** 还款方式 */
+export type LoanMethod = 'EQUAL_INSTALLMENT' | 'EQUAL_PRINCIPAL';
+
+/** 周期规则 */
+export interface RecurringRule {
+  id: string;
+  familyId: string;
+  ledgerId: string;
+  userId: string;
+  categoryId: string | null;
+  accountId: string | null;
+  type: TransactionType;
+  amount: number;
+  merchant: string | null;
+  note: string | null;
+  frequency: Frequency;
+  interval: number;
+  weekday: number | null;
+  monthDay: number | null;
+  startDate: string;
+  endDate: string | null;
+  nextRunAt: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+/** 贷款还款计划明细 */
+export interface LoanSchedule {
+  id: string;
+  loanId: string;
+  seq: number;
+  dueDate: string;
+  payment: number;
+  principalPart: number;
+  interestPart: number;
+  remainingPrincipal: number;
+  generatedTxId: string | null;
+  status: 'pending' | 'paid' | 'skipped';
+}
+
+/** 贷款 */
+export interface Loan {
+  id: string;
+  familyId: string;
+  ledgerId: string;
+  accountId: string | null;
+  name: string;
+  principal: number;
+  annualRate: number;
+  termMonths: number;
+  method: LoanMethod;
+  startDate: string;
+  isActive: boolean;
+  createdAt: string;
+  schedules?: LoanSchedule[];
+}
+
+/** 备份载荷 */
+export interface BackupPayload {
+  version: string;
+  exportedAt: string;
+  familyId: string;
+  data: {
+    ledgers: any[];
+    categories: any[];
+    accounts: any[];
+    transactions: any[];
+    budgets: any[];
+    wish_goals: any[];
+    monthly_reports: any[];
+  };
 }
 
 /** 创建交易请求 */
@@ -113,6 +212,13 @@ export interface TransactionQueryParams {
   pageSize?: number;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  // ===== 二期扩展筛选（与后端 QueryTransactionDto 严格一致） =====
+  /** 退款状态筛选 */
+  refundStatus?: 'NONE' | 'PARTIAL' | 'FULL';
+  /** 报销状态筛选 */
+  reimbursementStatus?: 'NONE' | 'PENDING' | 'REIMBURSED';
+  /** 是否参与分期（installmentGroupId 不为空） */
+  hasInstallment?: boolean;
 }
 
 /** 快捷记账请求 */

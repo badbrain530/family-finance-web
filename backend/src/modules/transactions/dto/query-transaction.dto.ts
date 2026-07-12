@@ -83,4 +83,20 @@ export class QueryTransactionDto {
   @IsOptional()
   @IsIn(['asc', 'desc'])
   readonly sortOrder?: string;
+
+  // ===== 二期扩展筛选（whitelist 必需） =====
+
+  /** 退款状态筛选 */
+  @IsOptional()
+  @IsIn(['NONE', 'PARTIAL', 'FULL'])
+  readonly refundStatus?: string;
+
+  /** 报销状态筛选 */
+  @IsOptional()
+  @IsIn(['NONE', 'PENDING', 'REIMBURSED'])
+  readonly reimbursementStatus?: string;
+
+  /** 是否参与分期（installmentGroupId 不为空） */
+  @IsOptional()
+  readonly hasInstallment?: boolean;
 }
