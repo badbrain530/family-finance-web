@@ -26,12 +26,15 @@ export class LedgersController {
   /**
    * 获取家庭下的账本列表
    * GET /api/ledgers?familyId=xxx
+   * 兼容历史前端以 params[familyId] 嵌套传递的形态（部署漂移时旧前端镜像仍发嵌套参数）
    */
   @Get()
   async getLedgers(
-    @Query('familyId') familyId: string,
+    @Query('familyId') familyIdParam: string,
+    @Query('params') params: { familyId?: string },
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    const familyId = familyIdParam ?? params?.familyId;
     return this.ledgersService.getLedgers(familyId, user.userId);
   }
 
