@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -70,6 +71,7 @@ const CREATE_LEDGER_ITEM_VALUE = '__create_ledger__';
 export function QuickRecordModal() {
   const { quickRecordOpen, setQuickRecordOpen } = useUIStore();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [input, setInput] = useState('');
   const [amount, setAmount] = useState('');
@@ -270,6 +272,10 @@ export function QuickRecordModal() {
         description: `${transactionType === TransactionType.EXPENSE ? '-' : '+'}${formatCurrency(result.transaction.amount)} · 置信度${Math.round(result.confidence * 100)}%`,
         variant: 'success',
       });
+
+      // 失效交易列表与账户缓存，确保"交易管理"与"账户视图"在记账后立即刷新
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
 
       setQuickRecordOpen(false);
     } catch (err: any) {

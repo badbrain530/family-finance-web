@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { QuickRecordModal } from './QuickRecordModal';
 import { useUIStore } from '@/store/uiStore';
 import { LedgerType, type Family, type Ledger } from '@/types/family';
+
+const queryClient = new QueryClient();
+const renderWithClient = (ui: React.ReactElement) =>
+  render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 
 /**
  * 组件测试：QuickRecordModal（Bug A 修复——无账本时可在弹窗内直接新建账本）
@@ -79,7 +84,7 @@ beforeEach(() => {
 describe('QuickRecordModal - 无账本时弹窗内新建账本（Bug A 修复）', () => {
   it('① 无账本场景：打开弹窗渲染"新建账本"面板，且不出现死路"账本管理"文案', async () => {
     useUIStore.setState({ quickRecordOpen: true });
-    render(<QuickRecordModal />);
+    renderWithClient(<QuickRecordModal />);
 
     await waitFor(() =>
       expect(screen.getByText('还没有账本')).toBeInTheDocument(),
@@ -91,7 +96,7 @@ describe('QuickRecordModal - 无账本时弹窗内新建账本（Bug A 修复）
 
   it('② 触发 handleCreateLedger：新建账本被加入列表、ledgerId 被选中，且不再出现死路文案', async () => {
     useUIStore.setState({ quickRecordOpen: true });
-    render(<QuickRecordModal />);
+    renderWithClient(<QuickRecordModal />);
 
     // 等待进入新建账本面板
     await waitFor(() =>
