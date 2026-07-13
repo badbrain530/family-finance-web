@@ -14,12 +14,14 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    // 本目录下不应有其它测试文件，限制范围，避免误跑整个项目
+    // 限制范围，避免误跑整个项目；覆盖各核心 feature 与 services 下的回归用例
     include: [
       'src/features/dashboard/**/*.test.{ts,tsx}',
       'src/features/categories/**/*.test.{ts,tsx}',
       'src/features/accounts/**/*.test.{ts,tsx}',
       'src/features/transactions/**/*.test.{ts,tsx}',
+      'src/features/family/**/*.test.{ts,tsx}',
+      'src/services/**/*.test.{ts,tsx}',
     ],
   },
 });

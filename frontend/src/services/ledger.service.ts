@@ -1,12 +1,13 @@
-import { get, post } from './api';
+import { get, post, del } from './api';
 import { LedgerType, type Ledger } from '@/types/family';
 
 /**
  * 账本API服务
  *
  * 后端路由（全局前缀 api）：
- *   GET  /api/ledgers?familyId=xxx
- *   POST /api/ledgers  body: { familyId, name, type? }
+ *   GET    /api/ledgers?familyId=xxx
+ *   POST   /api/ledgers            body: { familyId, name, type? }
+ *   DELETE /api/ledgers/:id        级联删除账本及其下所有账户与交易
  */
 
 /**
@@ -42,4 +43,13 @@ export function createLedger(
   type: LedgerType = LedgerType.SHARED,
 ): Promise<Ledger> {
   return post<Ledger>('/ledgers', { familyId, name, type });
+}
+
+/**
+ * 删除账本（级联删除其下所有账户与交易）
+ * @param ledgerId 账本ID
+ * @returns 操作结果
+ */
+export function deleteLedger(ledgerId: string): Promise<{ success: boolean }> {
+  return del<{ success: boolean }>(`/ledgers/${ledgerId}`);
 }

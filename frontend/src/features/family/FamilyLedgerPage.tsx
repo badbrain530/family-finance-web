@@ -13,6 +13,7 @@ import {
   BookOpen,
   Plus,
   Loader2,
+  Trash2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,14 +29,22 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { AmountText } from '@/components/common/AmountText';
 import { CategoryTag } from '@/components/common/CategoryTag';
 import { useToast } from '@/components/ui/toaster';
 import { useAuthStore } from '@/store/authStore';
 import { getCurrentFamily, createFamily } from '@/services/family.service';
-import { getLedgers, createLedger } from '@/services/ledger.service';
+import { getLedgers, createLedger, deleteLedger } from '@/services/ledger.service';
 import { cn, formatCurrency, formatDate, copyToClipboard } from '@/lib/utils';
-import { MemberRole, LedgerType } from '@/types/family';
+import { MemberRole, LedgerType, type Ledger } from '@/types/family';
 import type { Transaction, TransactionType } from '@/types/transaction';
 
 /**
@@ -56,6 +65,8 @@ export function FamilyLedgerPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  // 待删除账本（控制删除确认弹窗）；为 null 时弹窗关闭
+  const [deleteTarget, setDeleteTarget] = useState<Ledger | null>(null);
 
   // TanStack Query 获取家庭数据
   const { data: familyData } = useQuery({
@@ -112,6 +123,30 @@ export function FamilyLedgerPage() {
       toast({
         title: '创建家庭失败',
         description: err?.message || '请稍后重试',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // 删除账本：级联删除其下账户与交易，成功后使列表 / 账户 / 交易缓存失效
+  const deleteLedgerMutation = useMutation({
+    mutationFn: (id: string) => deleteLedger(id),
+    onSuccess: () => {
+      // 这些 query 的数据被级联删除，需刷新（列表本身 + 其他页面缓存）
+      queryClient.invalidateQueries({ queryKey: ['ledgers', family!.id] });
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      setDeleteTarget(null);
+      toast({
+        title: '账本已删除',
+        description: '该账本及其下所有账户、交易记录已永久删除',
+        variant: 'success',
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: '删除账本失败',
+        description: err?.message || '删除失败',
         variant: 'destructive',
       });
     },
@@ -312,10 +347,18 @@ export function FamilyLedgerPage() {
                   <div className="flex items-center gap-2">
                     <BookOpen size={14} className="text-text-tertiary" />
                     <span className="text-sm text-text-primary">{ledger.name}</span>
+                    <Badge variant={ledger.type === LedgerType.SHARED ? 'default' : 'secondary'}>
+                      {ledger.type === LedgerType.SHARED ? '共享' : '个人'}
+                    </Badge>
                   </div>
-                  <Badge variant={ledger.type === LedgerType.SHARED ? 'default' : 'secondary'}>
-                    {ledger.type === LedgerType.SHARED ? '共享' : '个人'}
-                  </Badge>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setDeleteTarget(ledger)}
+                    aria-label="删除账本"
+                  >
+                    <Trash2 size={14} className="text-text-tertiary" />
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -545,6 +588,38 @@ export function FamilyLedgerPage() {
           </Card>
         </div>
       )}
+
+      {/* 删除账本确认弹窗 */}
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除账本</DialogTitle>
+            <DialogDescription>
+              确定删除「{deleteTarget?.name}」吗？该账本下的所有账户、交易记录将一并永久删除，且不可恢复。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteTarget && deleteLedgerMutation.mutate(deleteTarget.id)}
+              disabled={deleteLedgerMutation.isPending}
+            >
+              {deleteLedgerMutation.isPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Trash2 size={14} />
+              )}
+              确认删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

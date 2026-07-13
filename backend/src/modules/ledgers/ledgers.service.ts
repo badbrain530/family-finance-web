@@ -150,7 +150,19 @@ export class LedgersService {
   }
 
   /**
-   * 删除账本（需验证无关联交易或级联处理）
+   * 级联删除账本及其全部子数据（交易 / 账户 / 周期规则 / 贷款 / 导入记录）。
+   *
+   * 采用「应用层手动级联」而非依赖 schema 的 onDelete 级联：线上财务库的外键多为
+   * Restrict，且改动 schema / 新增 Prisma migration 风险高（本项目最小变更原则）。
+   * 在单个 $transaction 内按依赖顺序清除子数据、最后删除账本本身，保证原子性，
+   * 任意一步失败整体回滚，不会残留孤儿数据。
+   *
+   * 顺序之所以固定：Transaction / RecurringRule / Loan / ImportRecord 均挂 ledgerId 真实
+   * 关系且为 Restrict，必须先于 ledger 删除；Account.ledgerId 是松散 String 字段（无 Prisma
+   * 关系），同样用 deleteMany 手动清理。
+   *
+   * 权限校验沿用 getLedger：PERSONAL 仅 owner 可删，SHARED 需 OWNER / ADMIN。
+   *
    * @param ledgerId 账本ID
    * @param userId 操作者用户ID
    * @returns 操作结果
@@ -158,7 +170,7 @@ export class LedgersService {
   async deleteLedger(ledgerId: string, userId: string): Promise<{ success: boolean }> {
     const ledger = await this.getLedger(ledgerId, userId);
 
-    // 权限校验
+    // 权限校验：PERSONAL 仅 owner 可删；SHARED 需 OWNER / ADMIN
     if (ledger.type === 'PERSONAL' && ledger.ownerId !== userId) {
       throw new BadRequestException('无权删除他人的个人账本');
     }
@@ -166,15 +178,44 @@ export class LedgersService {
       await this.familiesService.validateFamilyRole(ledger.familyId, userId, ['OWNER', 'ADMIN']);
     }
 
-    // 检查是否有关联交易
-    if (ledger._count.transactions > 0) {
-      throw new BadRequestException(
-        `该账本下有 ${ledger._count.transactions} 条交易记录，无法删除。请先迁移或删除交易。`,
-      );
-    }
+    // 应用层手动级联删除：单个事务内按依赖顺序清除子数据，最后删账本本身。
+    // 即便账本下已有交易 / 账户等数据，也不再拒绝，而是一并永久删除。
+    // 注意：被删模型可能还挂着各自的子表（均为 ON DELETE RESTRICT 且无 ledgerId 字段），
+    // 必须「先删孙子，再删儿子，最后删账本」，否则真实库会抛 FK 约束错误并整体回滚。
+    await this.prisma.$transaction(async (tx) => {
+      // 分类反馈依赖交易（RESTRICT，且无 ledgerId），需先按本账本交易ID清掉
+      const txIds = await tx.transaction.findMany({
+        where: { ledgerId },
+        select: { id: true },
+      });
+      if (txIds.length) {
+        await tx.classificationFeedback.deleteMany({
+          where: { transactionId: { in: txIds.map((t) => t.id) } },
+        });
+      }
+      // 交易
+      await tx.transaction.deleteMany({ where: { ledgerId } });
 
-    await this.prisma.ledger.delete({
-      where: { id: ledgerId },
+      // 贷款还款计划依赖贷款（RESTRICT，且无 ledgerId），需先按本账本贷款ID清掉
+      const loanIds = await tx.loan.findMany({
+        where: { ledgerId },
+        select: { id: true },
+      });
+      if (loanIds.length) {
+        await tx.loanSchedule.deleteMany({
+          where: { loanId: { in: loanIds.map((l) => l.id) } },
+        });
+      }
+      // 贷款
+      await tx.loan.deleteMany({ where: { ledgerId } });
+
+      // 账户、周期规则、导入记录（按原样清理）
+      await tx.account.deleteMany({ where: { ledgerId } });
+      await tx.recurringRule.deleteMany({ where: { ledgerId } });
+      await tx.importRecord.deleteMany({ where: { ledgerId } });
+
+      // 账本本身
+      await tx.ledger.delete({ where: { id: ledgerId } });
     });
 
     return { success: true };

@@ -1,27 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getLedgers, createLedger } from '@/services/ledger.service';
+import { getLedgers, createLedger, deleteLedger } from '@/services/ledger.service';
 import { LedgerType, type Ledger } from '@/types/family';
 
 /**
  * 单元测试：ledger.service（Bug A 修复）
  *
  * 后端实际路由（全局前缀 api）：
- *   GET  /api/ledgers?familyId=xxx
- *   POST /api/ledgers  body: { familyId, name, type? }
+ *   GET    /api/ledgers?familyId=xxx
+ *   POST   /api/ledgers            body: { familyId, name, type? }
+ *   DELETE /api/ledgers/:id        级联删除账本及其下所有账户与交易
  *
- * 这里 mock 掉 '@/services/api' 的 get/post，断言：
+ * 这里 mock 掉 '@/services/api' 的 get/post/del，断言：
  *   - getLedgers 真实请求 URL 为 '/ledgers' 且 query(params) 带 familyId
  *   - createLedger 真实 POST 到 '/ledgers' 且 body 含 { familyId, name, type }
+ *   - deleteLedger 真实 DELETE 到 '/ledgers/<id>' 且返回 { success: true }
  */
 
 const h = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
+  del: vi.fn(),
 }));
 
 vi.mock('@/services/api', () => ({
   get: (...args: unknown[]) => h.get(...args),
   post: (...args: unknown[]) => h.post(...args),
+  del: (...args: unknown[]) => h.del(...args),
 }));
 
 const familyId = 'fam-1';
@@ -75,5 +79,16 @@ describe('ledger.service - 修复后的请求路径 (Bug A)', () => {
 
     const [, body] = h.post.mock.calls[0] as [string, Record<string, unknown>];
     expect(body.type).toBe(LedgerType.SHARED);
+  });
+
+  it('deleteLedger 请求 DELETE /ledgers/:id 并返回 { success: true }', async () => {
+    h.del.mockResolvedValue({ success: true });
+
+    const result = await deleteLedger('l1');
+
+    expect(h.del).toHaveBeenCalledTimes(1);
+    const [url] = h.del.mock.calls[0] as [string];
+    expect(url).toBe('/ledgers/l1');
+    expect(result).toEqual({ success: true });
   });
 });
