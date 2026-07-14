@@ -21,6 +21,7 @@ export default defineConfig({
       'src/features/accounts/**/*.test.{ts,tsx}',
       'src/features/transactions/**/*.test.{ts,tsx}',
       'src/features/family/**/*.test.{ts,tsx}',
+      'src/components/common/**/*.test.{ts,tsx}',
       'src/services/**/*.test.{ts,tsx}',
     ],
   },

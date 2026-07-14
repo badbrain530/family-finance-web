@@ -1,18 +1,16 @@
-import { Trash2, Tag, X, CheckSquare } from 'lucide-react';
+import { Trash2, X, CheckSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 /**
  * 批量操作工具栏组件 (W-03)
- * 选中交易后显示，支持批量删除、批量修改分类
+ * 选中交易后显示，仅支持批量删除
  */
 interface BatchOperationsProps {
   /** 已选中的条目数 */
   selectedCount: number;
   /** 批量删除回调 */
   onBatchDelete: () => void;
-  /** 批量修改分类回调 */
-  onBatchClassify: () => void;
   /** 全选回调 */
   onSelectAll: () => void;
   /** 取消选择回调 */
@@ -25,7 +23,6 @@ interface BatchOperationsProps {
 export function BatchOperations({
   selectedCount,
   onBatchDelete,
-  onBatchClassify,
   onSelectAll,
   onClearSelection,
   isAllSelected = false,
@@ -59,17 +56,6 @@ export function BatchOperations({
       >
         <CheckSquare size={14} />
         {isAllSelected ? '取消全选' : '全选'}
-      </Button>
-
-      {/* 批量修改分类 */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onBatchClassify}
-        className="border-primary-200 text-primary-600 hover:bg-primary-100"
-      >
-        <Tag size={14} />
-        修改分类
       </Button>
 
       {/* 批量删除 */}

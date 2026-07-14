@@ -18,6 +18,7 @@ import {
   SelectContent,
   SelectItem,
   SelectLabel,
+  SelectGroup,
   SelectSeparator,
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/toaster';
@@ -243,7 +244,7 @@ export function EditTransactionModal({
               </SelectTrigger>
               <SelectContent>
                 {filteredRoots.map((root) => (
-                  <div key={root.id}>
+                  <SelectGroup key={root.id}>
                     <SelectLabel>{root.name}</SelectLabel>
                     {root.children?.map((child) => (
                       <SelectItem key={child.id} value={child.id}>
@@ -251,7 +252,7 @@ export function EditTransactionModal({
                       </SelectItem>
                     ))}
                     <SelectSeparator />
-                  </div>
+                  </SelectGroup>
                 ))}
               </SelectContent>
             </Select>

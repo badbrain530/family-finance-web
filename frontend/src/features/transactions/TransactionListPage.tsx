@@ -165,10 +165,6 @@ export function TransactionListPage() {
     setShowDeleteConfirm(false);
   };
 
-  const handleBatchClassify = () => {
-    // 打开分类选择弹窗（后续实现）
-  };
-
   // 打开编辑弹窗
   const handleEdit = (tx: Transaction) => {
     setEditTransaction(tx);
@@ -370,7 +366,6 @@ export function TransactionListPage() {
         <BatchOperations
           selectedCount={selectedIds.size}
           onBatchDelete={handleBatchDelete}
-          onBatchClassify={handleBatchClassify}
           onSelectAll={handleSelectAll}
           onClearSelection={handleClearSelection}
           isAllSelected={isAllSelected}
