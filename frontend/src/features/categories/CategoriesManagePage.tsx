@@ -33,6 +33,7 @@ import { useToast } from '@/components/ui/toaster';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -110,6 +111,8 @@ export function CategoriesManagePage() {
   const [formName, setFormName] = useState('');
   const [formIcon, setFormIcon] = useState('other');
   const [formColor, setFormColor] = useState(ICON_COLOR.other);
+  /** 是否随一级分类配色（仅二级分类有效）。true=继承父级色（保存 color=null） */
+  const [formInheritColor, setFormInheritColor] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -222,7 +225,9 @@ export function CategoriesManagePage() {
     setEditingCat(null);
     setFormName('');
     setFormIcon('other');
-    setFormColor(ICON_COLOR.other);
+    // 新建二级默认继承一级配色：预览显示父级色，保存时 color 发 null
+    setFormColor(selectedParent.color ?? ICON_COLOR.other);
+    setFormInheritColor(true);
     setFormOpen(true);
   };
 
@@ -230,7 +235,9 @@ export function CategoriesManagePage() {
     setEditingCat(cat);
     setFormName(cat.name);
     setFormIcon(cat.icon);
-    setFormColor(cat.color);
+    setFormColor(cat.color ?? '#94A3B8');
+    // 一级分类恒为自身色（不显示继承开关）；二级按后端返回的 inheritColor 判定
+    setFormInheritColor(cat.parentId === null ? false : (cat.inheritColor ?? false));
     setFormOpen(true);
   };
 
@@ -242,14 +249,28 @@ export function CategoriesManagePage() {
     }
     setSaving(true);
     try {
+      // 是否为一级分类（编辑态且 parentId 为空才是一级；新建恒为二级）
+      const isLevel1 = !!editingCat && editingCat.parentId === null;
+
       if (editingCat) {
         // 更新分类：不发送 parentId（后端 UpdateCategoryDto 未声明该字段，
         // 会因 forbidNonWhitelisted 被拦截返回 400）。更新也不允许改父级。
         const updatePayload: Partial<CreateCategoryRequest> = {
           name: formName.trim(),
           icon: formIcon,
-          color: formColor,
         };
+        if (isLevel1) {
+          // 一级分类恒为自身色
+          updatePayload.color = formColor;
+        } else if (formInheritColor) {
+          // 二级继承：color 发 null（inheritColor 作为契约冗余一并发送）
+          updatePayload.color = null;
+          updatePayload.inheritColor = true;
+        } else {
+          // 二级覆盖：发自身色
+          updatePayload.color = formColor;
+          updatePayload.inheritColor = false;
+        }
         await updateCategory(editingCat.id, updatePayload);
         toast({ title: '分类已更新', variant: 'success' });
       } else {
@@ -257,7 +278,9 @@ export function CategoriesManagePage() {
           name: formName.trim(),
           parentId: selectedParent.id,
           icon: formIcon,
-          color: formColor,
+          // 二级默认继承：开启时 color 发 null（继承父级），关闭时发自身色
+          color: formInheritColor ? null : formColor,
+          inheritColor: formInheritColor,
         };
         await createCategory(family.id, payload);
         toast({ title: '分类已添加', variant: 'success' });
@@ -369,7 +392,7 @@ export function CategoriesManagePage() {
                             className="flex-1 flex items-center gap-2.5 min-w-0"
                             onClick={() => setSelectedId(cat.id)}
                           >
-                            <Glyph size={16} color={cat.color} />
+                            <Glyph size={16} color={cat.color ?? '#94A3B8'} />
                             <span className="truncate">{cat.name}</span>
                             <span className="ml-auto text-xs text-text-tertiary">
                               {cat.children?.length || 0}
@@ -431,9 +454,9 @@ export function CategoriesManagePage() {
                           </button>
                           <div
                             className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                            style={{ backgroundColor: child.color + '20' }}
+                            style={{ backgroundColor: (child.color ?? '#94A3B8') + '20' }}
                           >
-                            <Glyph size={18} color={child.color} />
+                            <Glyph size={18} color={child.color ?? '#94A3B8'} />
                           </div>
                           <div className="min-w-0">
                             <div className="text-sm font-medium text-text-primary truncate">{child.name}</div>
@@ -511,7 +534,8 @@ export function CategoriesManagePage() {
                       aria-label={k}
                       onClick={() => {
                         setFormIcon(k);
-                        setFormColor(ICON_COLOR[k]);
+                        // 继承态下不改色（预览保持父级色）；覆盖态下按图标 token 更新
+                        if (!formInheritColor) setFormColor(ICON_COLOR[k]);
                       }}
                       className={cn(
                         'w-12 h-12 rounded-lg flex items-center justify-center border transition-colors',
@@ -552,6 +576,28 @@ export function CategoriesManagePage() {
                 </div>
               </div>
             </div>
+
+            {/* 二级分类：随一级分类配色开关（仅二级显示；一级是根，恒为自身色） */}
+            {editingCat?.parentId !== null && (
+              <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2.5">
+                <div className="pr-3">
+                  <div className="text-sm font-medium text-text-primary">随一级分类配色</div>
+                  <div className="text-xs text-text-tertiary">
+                    开启后图标颜色自动跟随「{selectedParent?.name}」，关闭可单独设置
+                  </div>
+                </div>
+                <Switch
+                  checked={formInheritColor}
+                  onCheckedChange={(checked) => {
+                    setFormInheritColor(checked);
+                    if (checked) {
+                      // 继承：预览色块切换为父级色
+                      setFormColor(selectedParent?.color ?? '#94A3B8');
+                    }
+                  }}
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormOpen(false)}>

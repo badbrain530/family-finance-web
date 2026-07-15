@@ -194,8 +194,9 @@ export class CategoriesService {
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
 
-    // 构建树形结构
-    return this.buildCategoryTree(categories);
+    // 构建树形结构，并将「继承父级颜色」解析为父级真实颜色返回
+    const tree = this.buildCategoryTree(categories);
+    return this.resolveInheritedColors(tree, null);
   }
 
   /**
@@ -228,13 +229,25 @@ export class CategoriesService {
 
     const sortOrder = dto.sortOrder ?? (maxSortOrder._max.sortOrder ?? -1) + 1;
 
+    // 颜色解析：一级必填；二级 inheritColor=true 或 color 为 null/undefined 视为继承，存 null
+    let color: string | null;
+    if (!dto.parentId) {
+      if (!dto.color) {
+        throw new BadRequestException('一级分类必须设置颜色');
+      }
+      color = dto.color;
+    } else {
+      const inherit = dto.inheritColor === true || dto.color === null || dto.color === undefined;
+      color = inherit ? null : dto.color;
+    }
+
     return this.prisma.category.create({
       data: {
         familyId: dto.familyId,
         parentId: dto.parentId || null,
         name: dto.name,
         icon: dto.icon,
-        color: dto.color,
+        color,
         sortOrder,
         isSystem: false,
       },
@@ -264,7 +277,23 @@ export class CategoriesService {
     const updateData: Record<string, unknown> = {};
     if (dto.name !== undefined) updateData.name = dto.name;
     if (dto.icon !== undefined) updateData.icon = dto.icon;
-    if (dto.color !== undefined) updateData.color = dto.color;
+
+    // 颜色解析：仅当 color 或 inheritColor 被显式传递时处理
+    if (dto.color !== undefined || dto.inheritColor !== undefined) {
+      let nextColor: string | null;
+      if (dto.inheritColor === true || dto.color === null) {
+        // 继承父级颜色：存 null
+        nextColor = null;
+      } else if (dto.color !== undefined) {
+        // 显式覆盖色
+        nextColor = dto.color;
+      } else {
+        // 仅传 inheritColor=false 且未带 color：保持现有值（可能为 null，继续继承）
+        nextColor = category.color;
+      }
+      updateData.color = nextColor;
+    }
+
     if (dto.sortOrder !== undefined) updateData.sortOrder = dto.sortOrder;
 
     return this.prisma.category.update({
@@ -504,5 +533,27 @@ export class CategoriesService {
     }
 
     return roots;
+  }
+
+  /** 继承解析兜底色（极端情况下父级颜色也为空时使用） */
+  private readonly FALLBACK_COLOR = '#94A3B8';
+
+  /**
+   * 递归解析「继承父级颜色」：
+   * - 节点 color 为 null 时，使用父级解析后的真实颜色（仍为空则兜底），并标记 inheritColor=true；
+   * - 节点 color 非空时保留自身色，标记 inheritColor=false；
+   * - 一级分类 parentColor 为 null，恒使用自身 color，inheritColor=false。
+   * 这样所有消费方（分类管理、交易、仪表盘等）拿到的 color 均为非空真实色。
+   */
+  private resolveInheritedColors(nodes: any[], parentColor: string | null): any[] {
+    return nodes.map((node) => {
+      const resolvedColor =
+        node.color == null ? (parentColor ?? this.FALLBACK_COLOR) : node.color;
+      const inheritColor = node.color == null;
+      const children = node.children?.length
+        ? this.resolveInheritedColors(node.children, resolvedColor)
+        : [];
+      return { ...node, color: resolvedColor, inheritColor, children };
+    });
   }
 }

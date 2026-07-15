@@ -37,7 +37,7 @@ export function CategoryTag({ category, className, size = 'sm' }: CategoryTagPro
       )}
     >
       {category.icon && (
-        <CategoryIcon iconKey={category.icon} size={12} color={category.color} />
+        <CategoryIcon iconKey={category.icon} size={12} color={category.color ?? '#3B82F6'} />
       )}
       <span
         className="w-2 h-2 rounded-full shrink-0"

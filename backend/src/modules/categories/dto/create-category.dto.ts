@@ -32,10 +32,22 @@ export class CreateCategoryDto {
   @IsString()
   readonly icon: string;
 
-  /** 颜色 hex值 */
-  @IsNotEmpty({ message: '颜色不能为空' })
+  /**
+   * 颜色 hex值（可空）
+   * - 一级分类必填；
+   * - 二级分类传 null（或 inheritColor=true）表示「继承父级颜色」，非空表示单独覆盖色。
+   */
+  @IsOptional()
   @IsString()
-  readonly color: string;
+  readonly color?: string | null;
+
+  /**
+   * 是否继承父级颜色（仅二级分类语义有效）
+   * true（或 color 为 null）表示继承，后端统一存 color=null；false 且带 color 表示覆盖。
+   * 后端以「color==null 即继承」为唯一判据，此字段作为契约一致性冗余。
+   */
+  @IsOptional()
+  readonly inheritColor?: boolean;
 
   /** 排序序号（可选，默认0） */
   @IsOptional()
@@ -64,7 +76,11 @@ export class UpdateCategoryDto {
 
   @IsOptional()
   @IsString()
-  readonly color?: string;
+  readonly color?: string | null;
+
+  /** 是否继承父级颜色（语义同 CreateCategoryDto，仅作契约冗余） */
+  @IsOptional()
+  readonly inheritColor?: boolean;
 
   @IsOptional()
   @IsInt()

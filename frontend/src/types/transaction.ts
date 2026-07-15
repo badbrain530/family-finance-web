@@ -29,7 +29,10 @@ export interface Category {
    * 前端统一经 CategoryIcon / getCategoryIcon 双轨解析为对应渲染组件。
    */
   icon: string;
-  color: string;
+  /** 分类颜色（hex）。可空：null 表示继承父级(一级)颜色，由后端在读取时解析为父级真实色返回 */
+  color: string | null;
+  /** 是否继承父级颜色（后端读取时计算：color 为 null 即继承）。仅对二级分类有意义 */
+  inheritColor?: boolean;
   sortOrder: number;
   isSystem: boolean;
   createdAt: string;
@@ -245,7 +248,10 @@ export interface CreateCategoryRequest {
   parentId?: string;
   /** 图标。可存 lucide 图标名或设计师图标 key（见 categoryIconMeta.ts 的 CategoryIconKey），由 CategoryIcon/getCategoryIcon 解析 */
   icon: string;
-  color: string;
+  /** 颜色（hex）。二级分类传 null 表示继承父级颜色；一级分类必填 */
+  color: string | null;
+  /** 是否继承父级颜色（仅二级分类）。true 或 color 为 null 表示继承 */
+  inheritColor?: boolean;
 }
 
 /** 重排序分类请求 */

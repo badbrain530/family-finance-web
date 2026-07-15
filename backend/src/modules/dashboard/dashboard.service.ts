@@ -31,7 +31,7 @@ export interface DashboardData {
     note: string | null;
     isLargeExpense: boolean;
     categoryId: string | null;
-    category: { id: string; name: string; color: string; icon: string } | null;
+    category: { id: string; name: string; color: string | null; icon: string } | null;
     user: { id: string; nickname: string; avatar: string | null } | null;
   }>;
   /** 收支趋势（6个月） */
@@ -45,7 +45,7 @@ export interface DashboardData {
     categoryId: string;
     name: string;
     amount: number;
-    color: string;
+    color: string | null;
     percentage: number;
   }>;
   /** 心愿目标进度 */
@@ -390,7 +390,7 @@ export class DashboardService {
     // 按分类汇总
     const categoryMap = new Map<
       string,
-      { categoryId: string; name: string; color: string; amount: number }
+      { categoryId: string; name: string; color: string | null; amount: number }
     >();
 
     let totalExpense = 0;

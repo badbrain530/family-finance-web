@@ -121,7 +121,8 @@ model Category {
   parentId   String?  @map("parent_id")
   name       String
   icon       String
-  color      String
+  // 颜色可空：null 表示「继承父级(一级)颜色」，非空表示自身覆盖色
+  color      String?
   sortOrder  Int      @default(0) @map("sort_order")
   isSystem   Boolean  @default(false) @map("is_system")
   // 扩展预留字段
