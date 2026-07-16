@@ -31,6 +31,15 @@ import { RecurringModule } from './modules/recurring/recurring.module';
 import { LoansModule } from './modules/loans/loans.module';
 import { BackupModule } from './modules/backup/backup.module';
 
+// 债务/债券板块（T01/T04）
+import { BondsModule } from './modules/bonds/bonds.module';
+import { AmortizationModule } from './modules/amortizations/amortization.module';
+import { AdvancesModule } from './modules/advances/advances.module';
+
+// P0 第三期：QClaw 智能体 + MCP Server 集成
+import { ApiKeyModule } from './modules/apikey/apikey.module';
+import { McpModule } from './modules/mcp/mcp.module';
+
 // 全局JWT认证守卫
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
@@ -92,6 +101,15 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     RecurringModule,
     LoansModule,
     BackupModule,
+
+    // ===== 债务/债券板块（T01/T04） =====
+    BondsModule,
+    AmortizationModule,
+    AdvancesModule,
+
+    // ===== P0 第三期：QClaw 智能体 + MCP Server 集成 =====
+    ApiKeyModule,
+    McpModule,
   ],
   controllers: [HealthController],
   providers: [

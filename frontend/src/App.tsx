@@ -32,6 +32,9 @@ const MonthlyReportPage = lazy(() => import('@/features/report/MonthlyReportPage
 // 设置
 const SettingsPage = lazy(() => import('@/features/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
 
+// 智能体接入（QClaw / MCP）P0 第三期
+const ApiKeyPage = lazy(() => import('@/features/settings/ApiKeyPage').then(m => ({ default: m.ApiKeyPage })));
+
 // 账户总览
 const AccountsPage = lazy(() => import('@/features/accounts/AccountsPage').then(m => ({ default: m.AccountsPage })));
 
@@ -49,6 +52,15 @@ const LoansPage = lazy(() => import('@/features/loans/LoansPage').then(m => ({ d
 
 // 待报销
 const ReimbursementsPage = lazy(() => import('@/features/reimbursements/ReimbursementsPage').then(m => ({ default: m.ReimbursementsPage })));
+
+// 债券管理（债务/债券板块 T04）
+const BondsPage = lazy(() => import('@/features/bonds/BondsPage').then(m => ({ default: m.BondsPage })));
+
+// 待摊预付管理（债务/债券板块 T01）
+const AmortizationPage = lazy(() => import('@/features/amortizations/AmortizationPage').then(m => ({ default: m.AmortizationPage })));
+
+// 垫付管理（债务/债券板块 T02）
+const AdvancesPage = lazy(() => import('@/features/advances/AdvancesPage').then(m => ({ default: m.AdvancesPage })));
 
 /**
  * 受保护路由包装器
@@ -126,7 +138,11 @@ export default function App() {
           <Route path="recurring" element={<RecurringPage />} />
           <Route path="loans" element={<LoansPage />} />
           <Route path="reimbursements" element={<ReimbursementsPage />} />
+          <Route path="bonds" element={<BondsPage />} />
+          <Route path="amortizations" element={<AmortizationPage />} />
+          <Route path="advances" element={<AdvancesPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings/agent-access" element={<ApiKeyPage />} />
         </Route>
 
         {/* 404 重定向到仪表盘 */}

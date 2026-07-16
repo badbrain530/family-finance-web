@@ -268,17 +268,22 @@ export class LoansService {
     const loan = await this.getLoan(id, userId);
     const upto = dto.upto ? new Date(dto.upto) : new Date();
 
+    // 仅取 pending 且未生成过（generatedTxId 为空）的计划，保证幂等
     const pending = await this.prisma.loanSchedule.findMany({
-      where: { loanId: id, status: 'pending', dueDate: { lte: upto } },
+      where: { loanId: id, status: 'pending', generatedTxId: null, dueDate: { lte: upto } },
       orderBy: { seq: 'asc' },
     });
 
     let generated = 0;
     for (const s of pending) {
-      const tx = await this.createRepaymentTransaction(loan, s, userId);
+      const { principalTx, interestTxId } = await this.createRepaymentTransactions(loan, s, userId);
       await this.prisma.loanSchedule.update({
         where: { id: s.id },
-        data: { status: 'paid', generatedTxId: tx.id },
+        data: {
+          status: 'paid',
+          generatedTxId: principalTx.id,
+          generatedInterestTxId: interestTxId,
+        },
       });
       generated++;
     }
@@ -287,27 +292,55 @@ export class LoansService {
     return { generated };
   }
 
-  /** 单笔还款交易（复用 createTransaction 内部余额校正 + WS 事件） */
-  private async createRepaymentTransaction(loan: any, schedule: any, userId: string) {
-    const createDto: CreateTransactionDto = {
+  /**
+   * 双笔还款交易（决策②）：本金 EXPENSE + 利息 EXPENSE。
+   * 两笔均复用 createTransaction 内部余额校正 + WS 事件。
+   * 0% 利率时利息额为 0，跳过利息交易（避免金额校验失败），generatedInterestTxId 置空。
+   */
+  private async createRepaymentTransactions(
+    loan: any,
+    schedule: any,
+    userId: string,
+  ): Promise<{ principalTx: any; interestTxId: string | null }> {
+    const principalTx = await this.transactionsService.createTransaction(userId, {
       ledgerId: loan.ledgerId,
       accountId: loan.accountId ?? null,
       type: 'expense',
-      amount: schedule.payment,
+      amount: schedule.principalPart,
       date: schedule.dueDate.toISOString(),
       merchant: loan.name,
-      note: `第${schedule.seq}期还款（本金${schedule.principalPart}/利息${schedule.interestPart}）`,
+      note: `第${schedule.seq}期还款-本金（${loan.name}）`,
       source: 'manual',
       metadata: {
-        kind: 'loan_repayment',
+        kind: 'loan_repayment_principal',
         loanId: loan.id,
         scheduleSeq: schedule.seq,
         principalPart: schedule.principalPart,
-        interestPart: schedule.interestPart,
         remainingPrincipal: schedule.remainingPrincipal,
       },
-    } as CreateTransactionDto;
+    } as CreateTransactionDto);
 
-    return this.transactionsService.createTransaction(userId, createDto);
+    let interestTxId: string | null = null;
+    if (Number(schedule.interestPart) > 0.005) {
+      const interestTx = await this.transactionsService.createTransaction(userId, {
+        ledgerId: loan.ledgerId,
+        accountId: loan.accountId ?? null,
+        type: 'expense',
+        amount: schedule.interestPart,
+        date: schedule.dueDate.toISOString(),
+        merchant: loan.name,
+        note: `第${schedule.seq}期还款-利息（${loan.name}）`,
+        source: 'manual',
+        metadata: {
+          kind: 'loan_repayment_interest',
+          loanId: loan.id,
+          scheduleSeq: schedule.seq,
+          interestPart: schedule.interestPart,
+        },
+      } as CreateTransactionDto);
+      interestTxId = interestTx.id;
+    }
+
+    return { principalTx, interestTxId };
   }
 }

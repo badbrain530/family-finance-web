@@ -122,7 +122,7 @@ export class TransactionsService {
         date: new Date(dto.date),
         merchant: dto.merchant || null,
         note: dto.note || null,
-        source: (dto.source || 'manual').toUpperCase() as 'MANUAL' | 'QUICK_RECORD' | 'IMPORT' | 'VOICE',
+        source: (dto.source || 'manual').toUpperCase() as 'MANUAL' | 'QUICK_RECORD' | 'IMPORT' | 'VOICE' | 'AGENT',
         importRecordId: dto.importRecordId || null,
         aiConfidence: dto.aiConfidence || null,
         aiCorrected: false,
@@ -131,6 +131,8 @@ export class TransactionsService {
         // ===== 二期扩展字段（均可空，向原交易/反向交易关联） =====
         refundOfId: dto.refundOfId || null,
         reimbursementOfId: dto.reimbursementOfId || null,
+        advanceOfId: dto.advanceOfId || null,
+        amortizationItemId: dto.amortizationItemId || null,
         installmentGroupId: dto.installmentGroupId || null,
         installmentSeq: dto.installmentSeq ?? null,
         installmentTotal: dto.installmentTotal ?? null,

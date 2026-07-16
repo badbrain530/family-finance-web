@@ -12,6 +12,12 @@ import {
   PiggyBank,
   ChevronLeft,
   ChevronRight,
+  Receipt,
+  Landmark,
+  Layers,
+  ArrowUpRight,
+  Bot,
+  KeyRound,
 } from 'lucide-react';
 import { NAV_ITEMS, APP_NAME } from '@/lib/constants';
 import { useUIStore } from '@/store/uiStore';
@@ -29,6 +35,12 @@ const iconMap: Record<string, React.ComponentType<{ size?: number | string; clas
   Settings,
   Tags,
   PiggyBank,
+  Receipt,
+  Landmark,
+  Layers,
+  ArrowUpRight,
+  Bot,
+  KeyRound,
 };
 
 interface SidebarProps {
@@ -64,22 +76,30 @@ export function Sidebar({ collapsed }: SidebarProps) {
         </div>
       </div>
 
-      {/* 导航菜单 */}
+      {/* 导航菜单（按 group 分组渲染标题） */}
       <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.map((item, idx) => {
           const Icon = iconMap[item.icon] || LayoutDashboard;
+          const showGroup =
+            !collapsed && (idx === 0 || NAV_ITEMS[idx - 1].group !== item.group);
           return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) =>
-                cn('nav-item', isActive && 'active', collapsed && 'justify-center px-2')
-              }
-              title={collapsed ? item.label : undefined}
-            >
-              <Icon size={20} className="shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-            </NavLink>
+            <div key={item.path} className="contents">
+              {showGroup && (
+                <div className="px-3 pt-3 pb-1 text-xs font-medium text-text-tertiary select-none">
+                  {item.group}
+                </div>
+              )}
+              <NavLink
+                to={item.path}
+                className={({ isActive }) =>
+                  cn('nav-item', isActive && 'active', collapsed && 'justify-center px-2')
+                }
+                title={collapsed ? item.label : undefined}
+              >
+                <Icon size={20} className="shrink-0" />
+                {!collapsed && <span>{item.label}</span>}
+              </NavLink>
+            </div>
           );
         })}
       </nav>

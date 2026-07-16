@@ -73,6 +73,9 @@ export interface Transaction {
   refundStatus?: 'NONE' | 'PARTIAL' | 'FULL';
   reimbursementOfId?: string | null;
   reimbursementStatus?: 'NONE' | 'PENDING' | 'REIMBURSED';
+  // ===== 债务/债券板块扩展（垫付/待摊，均可空、向后兼容） =====
+  advanceOfId?: string | null; // 指向 AdvanceReceivable（垫付收回 INCOME 交易）
+  amortizationItemId?: string | null; // 指向 AmortizationItem（摊销 EXPENSE 标记，Net Expense 排除）
   // 关联数据
   category?: Category;
   account?: import('./account').Account;
@@ -151,6 +154,108 @@ export interface Loan {
   isActive: boolean;
   createdAt: string;
   schedules?: LoanSchedule[];
+}
+
+/** 票息频率 */
+export type CouponFrequency = 'MONTHLY' | 'QUARTERLY' | 'SEMI' | 'ANNUAL';
+
+/** 债券票息计划明细 */
+export interface BondSchedule {
+  id: string;
+  bondId: string;
+  seq: number;
+  dueDate: string;
+  /** 每期票息（持有方 INCOME） */
+  coupon: number;
+  /** 仅末期 = 面值，其余 0 */
+  principalReturn: number;
+  /** 剩余本金（末期 0） */
+  remainingPrincipal: number;
+  generatedTxId: string | null;
+  generatedInterestTxId: string | null;
+  status: 'pending' | 'paid' | 'skipped';
+}
+
+/** 债券（仅 HELD 持有方） */
+export interface Bond {
+  id: string;
+  familyId: string;
+  ledgerId: string;
+  accountId: string | null;
+  name: string;
+  faceValue: number;
+  annualRate: number;
+  termMonths: number;
+  /** 仅占位（债券票息固定） */
+  method: string;
+  couponFrequency: CouponFrequency;
+  startDate: string;
+  categoryId: string | null;
+  isActive: boolean;
+  createdAt: string;
+  schedules?: BondSchedule[];
+}
+
+/** 待摊/预付类型 */
+export type AmortizationType = 'PREPAID' | 'DEFERRED';
+
+/** 摊销计划明细 */
+export interface AmortizationSchedule {
+  id: string;
+  itemId: string;
+  seq: number;
+  dueDate: string;
+  amount: number;
+  generatedTxId: string | null;
+  status: 'pending' | 'posted' | 'skipped';
+}
+
+/** 待摊/预付项 */
+export interface AmortizationItem {
+  id: string;
+  familyId: string;
+  ledgerId: string;
+  accountId: string | null;
+  name: string;
+  totalAmount: number;
+  amortizedAmount: number;
+  remainingAmount: number;
+  startDate: string;
+  periodMonths: number;
+  periodType: string;
+  type: AmortizationType;
+  categoryId: string | null;
+  sourceTxId: string | null;
+  note: string | null;
+  isActive: boolean;
+  createdAt: string;
+  schedules?: AmortizationSchedule[];
+}
+
+/** 债务人类型 */
+export type DebtorType = 'PERSON' | 'COMPANY' | 'FAMILY';
+
+/** 垫付应收状态 */
+export type AdvanceStatus = 'PENDING' | 'PARTIAL' | 'RECOVERED' | 'CANCELLED';
+
+/** 垫付应收 */
+export interface AdvanceReceivable {
+  id: string;
+  familyId: string;
+  ledgerId: string;
+  accountId: string | null;
+  payerId: string;
+  debtorName: string;
+  debtorType: DebtorType;
+  sourceTxId: string;
+  amount: number;
+  repaidAmount: number;
+  remainingAmount: number;
+  dueDate: string | null;
+  status: AdvanceStatus;
+  note: string | null;
+  createdAt: string;
+  sourceTx?: Transaction | null;
 }
 
 /** 备份载荷 */

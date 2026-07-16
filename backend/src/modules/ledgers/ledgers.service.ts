@@ -92,6 +92,26 @@ export class LedgersService {
   }
 
   /**
+   * 获取家庭默认账本（v1 单账本策略）
+   * 返回该家庭首个 SHARED 账本（按创建时间升序）。
+   * MCP 工具记账 / 取数统一先解析默认账本，再传入既有 service，
+   * 由 getLedger 完成家族归属校验，保证家族隔离。
+   * @param familyId 家庭ID
+   * @returns 默认账本（Ledger 行）
+   * @throws NotFoundException 家庭无共享账本
+   */
+  async getDefaultLedger(familyId: string) {
+    const ledger = await this.prisma.ledger.findFirst({
+      where: { familyId, type: 'SHARED' },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!ledger) {
+      throw new NotFoundException('该家庭暂无共享账本，无法解析默认账本');
+    }
+    return ledger;
+  }
+
+  /**
    * 获取账本详情
    * @param ledgerId 账本ID
    * @param userId 请求者用户ID

@@ -36,13 +36,6 @@ export default () => ({
   OSS_ACCESS_KEY_SECRET: process.env.OSS_ACCESS_KEY_SECRET || '',
   OSS_BUCKET: process.env.OSS_BUCKET || 'family-finance-files',
 
-  // 通义千问LLM
-  LLM_API_KEY: process.env.LLM_API_KEY || '',
-  LLM_API_URL:
-    process.env.LLM_API_URL ||
-    'https://dashscope.aliyuncs.com/api/v1/services/aigeneration/text-generation/generation',
-  LLM_MODEL: process.env.LLM_MODEL || 'qwen-turbo',
-
   // 微信
   WECHAT_APP_ID: process.env.WECHAT_APP_ID || '',
   WECHAT_APP_SECRET: process.env.WECHAT_APP_SECRET || '',

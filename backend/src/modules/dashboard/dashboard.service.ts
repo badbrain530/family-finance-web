@@ -1,7 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FamiliesService } from '../families/families.service';
-import { calcNetExpense, sumRefundAmount } from '../../common/statistics/net-expense';
+import {
+  calcNetExpense,
+  sumRefundAmount,
+  sumReimbursedAmount,
+  sumAmortizationAmount,
+} from '../../common/statistics/net-expense';
 import dayjs from 'dayjs';
 
 /** 仪表盘返回的数据结构 */
@@ -175,9 +180,16 @@ export class DashboardService {
     });
 
     const totalIncome = Number(incomeResult._sum.amount) || 0;
-    // 净支出 = 原支出 − 当期退款（§7.2 统一口径）
+    // 净支出 = 原支出 − 当期退款/报销/摊销（§7.2 统一口径）
     const refundThisMonth = await sumRefundAmount(this.prisma, familyId, monthStart, monthEnd);
-    const totalExpense = calcNetExpense(Number(expenseResult._sum.amount) || 0, refundThisMonth);
+    const reimbursedThisMonth = await sumReimbursedAmount(this.prisma, familyId, monthStart, monthEnd);
+    const amortizedThisMonth = await sumAmortizationAmount(this.prisma, familyId, monthStart, monthEnd);
+    const totalExpense = calcNetExpense(
+      Number(expenseResult._sum.amount) || 0,
+      refundThisMonth,
+      reimbursedThisMonth,
+      amortizedThisMonth,
+    );
     const balance = totalIncome - totalExpense;
 
     // 上月结余
@@ -204,9 +216,16 @@ export class DashboardService {
     });
 
     const prevIncome = Number(prevIncomeResult._sum.amount) || 0;
-    // 上月净支出同样扣退
+    // 上月净支出同样扣退/报销/摊销
     const refundPrevMonth = await sumRefundAmount(this.prisma, familyId, prevMonthStart, prevMonthEnd);
-    const prevExpense = calcNetExpense(Number(prevExpenseResult._sum.amount) || 0, refundPrevMonth);
+    const reimbursedPrevMonth = await sumReimbursedAmount(this.prisma, familyId, prevMonthStart, prevMonthEnd);
+    const amortizedPrevMonth = await sumAmortizationAmount(this.prisma, familyId, prevMonthStart, prevMonthEnd);
+    const prevExpense = calcNetExpense(
+      Number(prevExpenseResult._sum.amount) || 0,
+      refundPrevMonth,
+      reimbursedPrevMonth,
+      amortizedPrevMonth,
+    );
     const previousBalance = prevIncome - prevExpense;
 
     let balanceTrend: 'up' | 'down' | 'flat' = 'flat';
@@ -258,9 +277,16 @@ export class DashboardService {
       _sum: { amount: true },
     });
 
-    // 预算消耗同样采用净支出口径（扣减退款）
+    // 预算消耗同样采用净支出口径（扣退/报销/摊销）
     const refund = await sumRefundAmount(this.prisma, familyId, monthStart, monthEnd);
-    const totalSpent = calcNetExpense(Number(expenseResult._sum.amount) || 0, refund);
+    const reimbursed = await sumReimbursedAmount(this.prisma, familyId, monthStart, monthEnd);
+    const amortized = await sumAmortizationAmount(this.prisma, familyId, monthStart, monthEnd);
+    const totalSpent = calcNetExpense(
+      Number(expenseResult._sum.amount) || 0,
+      refund,
+      reimbursed,
+      amortized,
+    );
     const remaining = totalBudget - totalSpent;
     const percentage = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
@@ -350,9 +376,16 @@ export class DashboardService {
         _sum: { amount: true },
       });
 
-      // 收支趋势的支出同样采用净口径（扣退）
+      // 收支趋势的支出同样采用净口径（扣退/报销/摊销）
       const refundForMonth = await sumRefundAmount(this.prisma, familyId, monthStart, monthEnd);
-      const netExpense = calcNetExpense(Number(expenseResult._sum.amount) || 0, refundForMonth);
+      const reimbursedForMonth = await sumReimbursedAmount(this.prisma, familyId, monthStart, monthEnd);
+      const amortizedForMonth = await sumAmortizationAmount(this.prisma, familyId, monthStart, monthEnd);
+      const netExpense = calcNetExpense(
+        Number(expenseResult._sum.amount) || 0,
+        refundForMonth,
+        reimbursedForMonth,
+        amortizedForMonth,
+      );
 
       trend.push({
         month: monthLabel,

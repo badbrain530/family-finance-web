@@ -18,6 +18,8 @@ import {
   Sparkles,
   Wallet,
   Plus,
+  ArrowUpRight,
+  Receipt,
 } from 'lucide-react';
 import {
   Select,
@@ -30,9 +32,12 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/store/uiStore';
+import { useAuthStore } from '@/store/authStore';
 import { useToast } from '@/components/ui/toaster';
-import { quickRecord } from '@/services/transaction.service';
+import { quickRecord, markReimbursement } from '@/services/transaction.service';
+import { registerAdvance } from '@/services/advance.service';
 import { getAccounts } from '@/services/account.service';
+import { DebtorType } from '@/types/transaction';
 import { getCurrentFamily } from '@/services/family.service';
 import { getLedgers, createLedger } from '@/services/ledger.service';
 import { LedgerType, type Family, type Ledger } from '@/types/family';
@@ -70,6 +75,7 @@ const CREATE_LEDGER_ITEM_VALUE = '__create_ledger__';
 
 export function QuickRecordModal() {
   const { quickRecordOpen, setQuickRecordOpen } = useUIStore();
+  const { user } = useAuthStore();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -98,6 +104,12 @@ export function QuickRecordModal() {
 
   // 缓存当前家庭，避免重复请求 getCurrentFamily
   const familyRef = useRef<Family | null>(null);
+
+  // 债务/债券板块（T02）：垫付 / 报销 选项
+  const [isAdvance, setIsAdvance] = useState(false); // 垫付模式：登记 AdvanceReceivable（内部建源 EXPENSE 交易）
+  const [debtorName, setDebtorName] = useState(''); // 债务人姓名
+  const [debtorType, setDebtorType] = useState<DebtorType>('PERSON');
+  const [isReimburse, setIsReimburse] = useState(false); // 报销模式：记账后置 PENDING（待报销）
 
   // 打开时自动聚焦 + 加载账户
   useEffect(() => {
@@ -141,6 +153,10 @@ export function QuickRecordModal() {
       setLedgerId('');
       setLedgerPanelMode('select');
       setNewLedgerName('');
+      setIsAdvance(false);
+      setDebtorName('');
+      setDebtorType('PERSON');
+      setIsReimburse(false);
     }
   }, [quickRecordOpen]);
 
@@ -258,6 +274,57 @@ export function QuickRecordModal() {
       return;
     }
 
+    // 垫付模式：登记 AdvanceReceivable（内部创建源 EXPENSE 交易，计入净支出）
+    if (isAdvance) {
+      if (!familyRef.current?.id || !user?.id) {
+        toast({
+          title: '请先加入家庭',
+          description: '垫付需要归属到你的家庭账本',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (!debtorName.trim()) {
+        toast({
+          title: '请填写债务人姓名',
+          description: '垫付是代他人暂付，需记录债务人',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setLoading(true);
+      try {
+        await registerAdvance({
+          ledgerId,
+          accountId: accountId || null,
+          payerId: user.id,
+          debtorName: debtorName.trim(),
+          debtorType: debtorType,
+          amount: parseFloat(amount),
+          note: note || undefined,
+        });
+        toast({
+          title: '已登记垫付',
+          description: `${debtorName.trim()} · ${formatCurrency(parseFloat(amount))}`,
+          variant: 'success',
+        });
+        queryClient.invalidateQueries({ queryKey: ['advances', familyRef.current.id] });
+        queryClient.invalidateQueries({ queryKey: ['transactions'] });
+        queryClient.invalidateQueries({ queryKey: ['accounts'] });
+        setQuickRecordOpen(false);
+      } catch (err: any) {
+        toast({
+          title: '垫付登记失败',
+          description: err?.message || '请稍后重试',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
     try {
       // 调用快捷记账API（使用真实账本ID，后端 getLedger 按 ID 精确查找）
@@ -267,9 +334,17 @@ export function QuickRecordModal() {
         accountId,
       });
 
+      let desc = `${transactionType === TransactionType.EXPENSE ? '-' : '+'}${formatCurrency(result.transaction.amount)} · 置信度${Math.round(result.confidence * 100)}%`;
+
+      // 报销模式：记账后置 PENDING（待报销，出现在「待报销」Tab 与报销页）
+      if (isReimburse && result.transaction?.id) {
+        await markReimbursement(result.transaction.id);
+        desc += ' · 已标记待报销';
+      }
+
       toast({
         title: `已记：${result.transaction.category?.name || '交易'}`,
-        description: `${transactionType === TransactionType.EXPENSE ? '-' : '+'}${formatCurrency(result.transaction.amount)} · 置信度${Math.round(result.confidence * 100)}%`,
+        description: desc,
         variant: 'success',
       });
 
@@ -489,6 +564,72 @@ export function QuickRecordModal() {
                 </SelectItem>
               </SelectContent>
             </Select>
+          )}
+        </div>
+
+        {/* 债务/债券板块（T02）：垫付 / 报销 选项 */}
+        <div className="px-6 pb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <ArrowUpRight size={14} className="text-primary" />
+            <span className="text-xs font-medium text-text-secondary">记账选项</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setIsAdvance((v) => !v)}
+              className={cn(
+                'flex items-center gap-1 px-2.5 py-1 text-xs rounded-full transition-colors',
+                isAdvance
+                  ? 'bg-primary text-white'
+                  : 'bg-surface text-text-tertiary hover:text-text-secondary',
+              )}
+            >
+              <ArrowUpRight size={12} />
+              垫付（代他人暂付）
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsReimburse((v) => !v)}
+              className={cn(
+                'flex items-center gap-1 px-2.5 py-1 text-xs rounded-full transition-colors',
+                isReimburse
+                  ? 'bg-primary text-white'
+                  : 'bg-surface text-text-tertiary hover:text-text-secondary',
+              )}
+            >
+              <Receipt size={12} />
+              报销（记后待报销）
+            </button>
+          </div>
+
+          {isAdvance && (
+            <div className="mt-3 space-y-3">
+              <div>
+                <label className="text-xs text-text-tertiary mb-1 block">债务人姓名</label>
+                <Input
+                  value={debtorName}
+                  onChange={(e) => setDebtorName(e.target.value)}
+                  placeholder="如：张三、某公司"
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-text-tertiary mb-1 block">债务人类型</label>
+                <Select value={debtorType} onValueChange={(v) => setDebtorType(v as DebtorType)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PERSON">个人</SelectItem>
+                    <SelectItem value="COMPANY">公司</SelectItem>
+                    <SelectItem value="FAMILY">家庭</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-text-tertiary">
+                垫付将以一笔「支出」入账，并在「垫付」页跟踪收回进度。
+              </p>
+            </div>
           )}
         </div>
 

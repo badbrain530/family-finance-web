@@ -13,7 +13,9 @@ import { Type } from 'class-transformer';
 export type TransactionType = 'income' | 'expense' | 'transfer';
 
 /** 交易来源 */
-export type TransactionSource = 'manual' | 'quick_record' | 'import' | 'voice';
+// 注：'agent' 仅允许经 MCP 工具注入（后端硬编码 source='agent'），
+// 下方 @IsIn 仍限制 web 客户端不得自行指定 'agent'，防止越权伪造来源。
+export type TransactionSource = 'manual' | 'quick_record' | 'import' | 'voice' | 'agent';
 
 /**
  * 创建交易DTO
@@ -109,6 +111,16 @@ export class CreateTransactionDto {
   @Type(() => Number)
   @IsNumber()
   readonly installmentTotal?: number | null;
+
+  /** 垫付收回反向交易：指向 AdvanceReceivable（仅垫付收回 INCOME 交易使用） */
+  @IsOptional()
+  @IsString()
+  readonly advanceOfId?: string | null;
+
+  /** 摊销费用标记：指向 AmortizationItem（仅摊销 EXPENSE 交易使用，Net Expense 中排除） */
+  @IsOptional()
+  @IsString()
+  readonly amortizationItemId?: string | null;
 }
 
 /**

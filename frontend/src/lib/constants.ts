@@ -25,19 +25,33 @@ export const ROUTES = {
   REPORTS: '/reports',
   NOTIFICATIONS: '/notifications',
   SETTINGS: '/settings',
+  AGENT_ACCESS: '/settings/agent-access',
+  REIMBURSEMENTS: '/reimbursements',
+  BONDS: '/bonds',
+  AMORTIZATIONS: '/amortizations',
+  ADVANCES: '/advances',
 } as const;
 
-// 侧边栏导航项
+/**
+ * 侧边栏导航项
+ * group 字段用于侧边栏分组（同组项在标题下聚合渲染）。
+ * 债务/债券 组（垫付/待摊/债券/待报销）为本板块（T01/T04）新增。
+ */
 export const NAV_ITEMS = [
-  { path: ROUTES.DASHBOARD, label: '仪表盘', icon: 'LayoutDashboard' },
-  { path: ROUTES.TRANSACTIONS, label: '交易管理', icon: 'ArrowLeftRight' },
-  { path: ROUTES.ACCOUNTS, label: '账户', icon: 'Wallet' },
-  { path: ROUTES.FAMILY, label: '家庭协同', icon: 'Users' },
-  { path: ROUTES.BUDGET, label: '预算管理', icon: 'PiggyBank' },
-  { path: ROUTES.CATEGORIES, label: '分类', icon: 'Tags' },
-  { path: ROUTES.REPORTS, label: '财务月报', icon: 'FileText' },
-  { path: ROUTES.NOTIFICATIONS, label: '通知中心', icon: 'Bell' },
-  { path: ROUTES.SETTINGS, label: '设置', icon: 'Settings' },
+  { path: ROUTES.DASHBOARD, label: '仪表盘', icon: 'LayoutDashboard', group: '总览' },
+  { path: ROUTES.TRANSACTIONS, label: '交易管理', icon: 'ArrowLeftRight', group: '记账' },
+  { path: ROUTES.ACCOUNTS, label: '账户', icon: 'Wallet', group: '记账' },
+  { path: ROUTES.FAMILY, label: '家庭协同', icon: 'Users', group: '协同' },
+  { path: ROUTES.BUDGET, label: '预算管理', icon: 'PiggyBank', group: '规划' },
+  { path: ROUTES.CATEGORIES, label: '分类', icon: 'Tags', group: '规划' },
+  { path: ROUTES.REPORTS, label: '财务月报', icon: 'FileText', group: '规划' },
+  { path: ROUTES.NOTIFICATIONS, label: '通知中心', icon: 'Bell', group: '协同' },
+  { path: ROUTES.REIMBURSEMENTS, label: '待报销', icon: 'Receipt', group: '债务/债券' },
+  { path: ROUTES.BONDS, label: '债券', icon: 'Landmark', group: '债务/债券' },
+  { path: ROUTES.AMORTIZATIONS, label: '待摊预付', icon: 'Layers', group: '债务/债券' },
+  { path: ROUTES.ADVANCES, label: '垫付', icon: 'ArrowUpRight', group: '债务/债券' },
+  { path: ROUTES.SETTINGS, label: '设置', icon: 'Settings', group: '系统' },
+  { path: ROUTES.AGENT_ACCESS, label: '智能体接入', icon: 'Bot', group: '智能体' },
 ] as const;
 
 // 移动端底部导航项（4个Tab）

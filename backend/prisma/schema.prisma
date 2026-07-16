@@ -39,10 +39,33 @@ model User {
   classificationFeedbacks ClassificationFeedback[]
   reports               MonthlyReport[] @relation("ReportReadBy")
   refreshTokens         RefreshToken[]
+  apiKeys               ApiKey[] // 智能体接入 API Key（MCP 鉴权，P0）
   accounts              Account[] @relation("AccountCreator") // 用户创建的账户（账户管理增量）
   recurringRules        RecurringRule[] // 用户创建的周期记账规则（二期）
 
+  // ===== 债务/债券板块（T01）：垫付付款人 =====
+  advanceReceivables    AdvanceReceivable[] @relation("AdvancePayer")
+
   @@map("users")
+}
+
+// ==================== API Key 模型（智能体接入 / MCP，P0） ====================
+model ApiKey {
+  id         String      @id @default(uuid())
+  userId     String      @map("user_id")
+  familyId   String      @map("family_id") // 冗余存储，便于快速隔离校验
+  keyHash    String      @map("key_hash")   // scrypt(salt:hash) 拼接，永不明文落库
+  scope      ApiKeyScope @default(READWRITE)
+  name       String?                       // 用户备注，如「我的龙虾-只读」
+  createdAt  DateTime    @default(now()) @map("created_at")
+  revokedAt  DateTime?   @map("revoked_at") // 非空即吊销（硬吊销）
+  lastUsedAt DateTime?   @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("api_keys")
 }
 
 // ==================== 2. 家庭模型 ====================
@@ -71,6 +94,11 @@ model Family {
   accounts    Account[]          // 家庭下的账户（账户管理增量）
   recurringRules RecurringRule[] // 周期记账规则（二期）
   loans       Loan[]             // 按揭贷款（二期）
+
+  // ===== 债务/债券板块（T01） =====
+  bonds              Bond[]             // 债券（持有方 HELD）
+  amortizationItems  AmortizationItem[] // 待摊/预付
+  advanceReceivables AdvanceReceivable[] // 垫付应收
 
   @@map("families")
 }
@@ -109,6 +137,11 @@ model Ledger {
   importRecords ImportRecord[]
   recurringRules RecurringRule[] // 周期记账规则（二期）
   loans       Loan[]             // 按揭贷款（二期）
+
+  // ===== 债务/债券板块（T01） =====
+  bonds              Bond[]             // 债券
+  amortizationItems  AmortizationItem[] // 待摊/预付
+  advanceReceivables AdvanceReceivable[] // 垫付应收
 
   @@index([familyId])
   @@map("ledgers")
@@ -187,6 +220,13 @@ model Transaction {
   reimbursementOfId   String?  @map("reimbursement_of_id")   // 指向原支出（报销收入交易）
   reimbursementStatus ReimburseStatus @default(NONE) @map("reimbursement_status")
 
+  // ===== 债务/债券板块扩展（垫付/待摊，均可空、向后兼容） =====
+  advanceOfId         String?  @map("advance_of_id")          // 指向 AdvanceReceivable（垫付收回 INCOME 交易，复用 reimbursementOfId 模式）
+  amortizationItemId  String?  @map("amortization_item_id")    // 指向 AmortizationItem（摊销 EXPENSE 标记，Net Expense 中排除）
+
+  // 垫付源交易反向关联（AdvanceReceivable.sourceTx 指向本交易）
+  advanceSourceTxes   AdvanceReceivable[] @relation("AdvanceSourceTx")
+
   @@index([ledgerId, date(sort: Desc)])
   @@index([categoryId, date(sort: Desc)])
   @@index([userId, date(sort: Desc)])
@@ -195,6 +235,8 @@ model Transaction {
   @@index([installmentGroupId])
   @@index([refundOfId])
   @@index([reimbursementOfId])
+  @@index([advanceOfId])
+  @@index([amortizationItemId])
   @@map("transactions")
 }
 
@@ -262,12 +304,14 @@ model LoanSchedule {
   principalPart     Decimal  @db.Decimal(12, 2) @map("principal_part")
   interestPart      Decimal  @db.Decimal(12, 2) @map("interest_part")
   remainingPrincipal Decimal @db.Decimal(14, 2) @map("remaining_principal")
-  generatedTxId     String?  @map("generated_tx_id") // 关联已生成的还款交易
+  generatedTxId     String?  @map("generated_tx_id") // 关联已生成的本金还款交易
+  generatedInterestTxId String? @map("generated_interest_tx_id") // 关联已生成的利息支出交易（决策②双笔）
   status            String   @default("pending")      // pending/paid/skipped
 
   loan Loan @relation(fields: [loanId], references: [id])
 
   @@index([loanId])
+  @@index([generatedInterestTxId])
   @@map("loan_schedules")
 }
 
@@ -483,6 +527,13 @@ enum TransactionSource {
   QUICK_RECORD  // Ctrl+K快捷记账
   IMPORT        // 账单导入
   VOICE         // 语音记账（P2预留）
+  AGENT         // 智能体（QClaw / MCP）记账
+}
+
+// ==================== API Key 作用域枚举（智能体接入） ====================
+enum ApiKeyScope {
+  READONLY    // 只读：仅允许 get* 类工具
+  READWRITE   // 读写：允许记账等写类工具
 }
 
 enum ImportPlatform {
@@ -545,4 +596,153 @@ enum ReimburseStatus {
   NONE
   PENDING
   REIMBURSED
+}
+
+// ==================== 债务/债券板块枚举（T01） ====================
+
+enum CouponFrequency {
+  MONTHLY   // 按月付息
+  QUARTERLY // 按季付息
+  SEMI      // 按半年付息
+  ANNUAL    // 按年付息
+}
+
+enum AmortizationType {
+  PREPAID  // 预付（先付后摊）
+  DEFERRED // 待摊（先发生后摊）
+}
+
+enum PeriodType {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum DebtorType {
+  PERSON   // 个人
+  COMPANY  // 公司
+  FAMILY   // 家庭
+}
+
+enum AdvanceStatus {
+  PENDING    // 待收回
+  PARTIAL    // 部分收回
+  RECOVERED  // 已全部收回
+  CANCELLED  // 已取消
+}
+
+// ==================== 债券模型（债务/债券板块 T01） ====================
+model Bond {
+  id           String         @id @default(uuid())
+  familyId     String         @map("family_id")
+  ledgerId     String         @map("ledger_id")
+  accountId    String?        @map("account_id")
+  name         String
+  faceValue    Decimal        @db.Decimal(14, 2) @map("face_value")
+  annualRate   Decimal        @db.Decimal(6, 4) @map("annual_rate")
+  termMonths   Int            @map("term_months")
+  method       LoanMethod     @default(EQUAL_INSTALLMENT) // 仅占位，债券票息固定
+  couponFrequency CouponFrequency @map("coupon_frequency")
+  startDate    DateTime       @map("start_date")
+  categoryId   String?        @map("category_id")
+  isActive     Boolean        @default(true) @map("is_active")
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  family    Family           @relation(fields: [familyId], references: [id])
+  ledger    Ledger           @relation(fields: [ledgerId], references: [id])
+  schedules BondSchedule[]
+
+  @@index([familyId])
+  @@map("bonds")
+}
+
+model BondSchedule {
+  id                  String   @id @default(uuid())
+  bondId              String   @map("bond_id")
+  seq                 Int
+  dueDate             DateTime @map("due_date")
+  coupon              Decimal  @db.Decimal(14, 2) // 每期票息（持有方 INCOME）
+  principalReturn     Decimal  @db.Decimal(14, 2) @map("principal_return") // 仅末期=面值，其余 0
+  remainingPrincipal  Decimal  @db.Decimal(14, 2) @map("remaining_principal")
+  generatedTxId       String?  @map("generated_tx_id") // 票息 INCOME 交易（coupon）
+  generatedInterestTxId String? @map("generated_interest_tx_id") // 末期本金返还 INCOME 交易（principalReturn）
+  status              String   @default("pending") // pending/paid/skipped
+
+  bond Bond @relation(fields: [bondId], references: [id])
+
+  @@index([bondId])
+  @@map("bond_schedules")
+}
+
+// ==================== 待摊/预付模型（债务/债券板块 T01） ====================
+model AmortizationItem {
+  id              String          @id @default(uuid())
+  familyId        String          @map("family_id")
+  ledgerId        String          @map("ledger_id")
+  accountId       String?         @map("account_id")
+  name            String
+  totalAmount     Decimal         @db.Decimal(14, 2) @map("total_amount")
+  amortizedAmount Decimal         @db.Decimal(14, 2) @default(0) @map("amortized_amount")
+  remainingAmount Decimal         @db.Decimal(14, 2) @map("remaining_amount")
+  startDate       DateTime        @map("start_date")
+  periodMonths    Int             @map("period_months")
+  periodType      PeriodType      @default(MONTHLY) @map("period_type")
+  type            AmortizationType // PREPAID 预付 / DEFERRED 待摊
+  categoryId      String?         @map("category_id")
+  sourceTxId      String?         @map("source_tx_id") // 初始入账 EXPENSE 交易
+  note            String?
+  isActive        Boolean         @default(true) @map("is_active")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  family    Family              @relation(fields: [familyId], references: [id])
+  ledger    Ledger              @relation(fields: [ledgerId], references: [id])
+  schedules AmortizationSchedule[]
+
+  @@index([familyId])
+  @@map("amortization_items")
+}
+
+model AmortizationSchedule {
+  id            String   @id @default(uuid())
+  itemId        String   @map("item_id")
+  seq           Int
+  dueDate       DateTime @map("due_date")
+  amount        Decimal  @db.Decimal(14, 2) // 每期摊销额（= totalAmount / periodMonths，末期校正）
+  generatedTxId String?  @map("generated_tx_id") // 摊销 EXPENSE 交易
+  status        String   @default("pending") // pending/posted/skipped
+
+  item AmortizationItem @relation(fields: [itemId], references: [id])
+
+  @@index([itemId])
+  @@map("amortization_schedules")
+}
+
+// ==================== 垫付应收模型（债务/债券板块 T01） ====================
+model AdvanceReceivable {
+  id           String       @id @default(uuid())
+  familyId     String       @map("family_id")
+  ledgerId     String       @map("ledger_id")
+  accountId    String?      @map("account_id")
+  payerId      String       @map("payer_id") // 垫付人（家庭成员）
+  debtorName   String       @map("debtor_name")
+  debtorType   DebtorType   @map("debtor_type")
+  sourceTxId   String       @map("source_tx_id") // 源支出交易
+  amount       Decimal      @db.Decimal(14, 2)
+  repaidAmount Decimal      @db.Decimal(14, 2) @default(0) @map("repaid_amount")
+  remainingAmount Decimal   @db.Decimal(14, 2) @map("remaining_amount")
+  dueDate      DateTime?    @map("due_date")
+  status       AdvanceStatus @default(PENDING) @map("status")
+  note         String?
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  family Family @relation(fields: [familyId], references: [id])
+  ledger Ledger @relation(fields: [ledgerId], references: [id])
+  payer  User   @relation("AdvancePayer", fields: [payerId], references: [id])
+  sourceTx Transaction? @relation("AdvanceSourceTx", fields: [sourceTxId], references: [id])
+
+  @@index([familyId])
+  @@index([ledgerId])
+  @@index([payerId])
+  @@index([status])
+  @@map("advance_receivables")
 }

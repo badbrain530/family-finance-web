@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AccountsService } from '../src/modules/accounts/accounts.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { FamiliesService } from '../src/modules/families/families.service';
+import { TransactionsService } from '../src/modules/transactions/transactions.service';
 import { AuthenticatedUser } from '../src/modules/auth/decorators/current-user.decorator';
 import {
   NotFoundException,
@@ -18,6 +19,7 @@ describe('AccountsService', () => {
   let service: AccountsService;
   let prisma: Record<string, any>;
   let familiesService: Record<string, any>;
+  let transactionsService: Record<string, any>;
 
   const user: AuthenticatedUser = { userId: 'u1', nickname: 'tester' };
 
@@ -39,11 +41,20 @@ describe('AccountsService', () => {
       validateFamilyMember: jest.fn(),
     };
 
+    // 补齐 AccountsService 第 3 个构造依赖 TransactionsService（既有 DI 缺口）
+    transactionsService = {
+      createTransaction: jest.fn(),
+      getTransactions: jest.fn(),
+      getTransactionById: jest.fn(),
+      recordBalanceAdjustment: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AccountsService,
         { provide: PrismaService, useValue: prisma },
         { provide: FamiliesService, useValue: familiesService },
+        { provide: TransactionsService, useValue: transactionsService },
       ],
     }).compile();
 

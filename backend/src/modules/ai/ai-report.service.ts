@@ -1,19 +1,24 @@
 /**
- * AI财务洞察月报生成服务
+ * AI 财务洞察月报 / 聚合服务（去 LLM 版）
  *
- * 工作流程：
- * 1. 统计数据聚合（总收入、总支出、结余、分类支出排名、环比变化）
- * 2. 异常检测（大额支出预警、异常增长分类）
- * 3. AI洞察生成（调用LLM生成3条可执行建议）
- * 4. 保存MonthlyReport到数据库
- * 5. 触发report.ready WebSocket事件
+ * 本服务只保留「纯数据聚合 + 异常检测」能力，已彻底移除通义千问等 LLM 调用
+ * （P0-05）。结论生成职责转移到用户侧 QClaw 智能体（其本地 LLM 基于本服务返回的
+ * 结构化 JSON 自行生成可读结论）。
+ *
+ * 对外公开方法（供 MCP 工具复用）：
+ * - aggregateSummary(familyId, start, end)：任意时间区间结构化汇总
+ * - getCategoryBreakdown(...) / detectAnomalies(...)（原私有，现公开，供 P1 工具复用）
  */
 
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
-import { calcNetExpense, sumRefundAmount } from '../../common/statistics/net-expense';
-import { QwenProvider } from './providers/qwen.provider';
+import {
+  calcNetExpense,
+  sumRefundAmount,
+  sumReimbursedAmount,
+  sumAmortizationAmount,
+} from '../../common/statistics/net-expense';
 
 /** 大额支出阈值（元） */
 const LARGE_EXPENSE_THRESHOLD = 1000;
@@ -24,23 +29,47 @@ const ANOMALY_GROWTH_THRESHOLD = 0.5;
 /** 异常频率阈值（某分类交易次数超过月均3倍） */
 const ANOMALY_FREQUENCY_MULTIPLIER = 3;
 
+/** 结构化汇总结果（不含任何 LLM 文案） */
+export interface SummaryResult {
+  totalIncome: number;
+  /** 净支出（原额 − 退款 − 报销 − 摊销） */
+  totalExpense: number;
+  balance: number;
+  categoryBreakdown: CategoryBreakdownItem[];
+  anomalies: AnomalyItem[];
+  period: { start: string; end: string };
+}
+
+export interface CategoryBreakdownItem {
+  categoryId: string | null;
+  categoryName: string;
+  amount: number;
+  percentage: number;
+  previousMonthAmount: number | null;
+  trend: 'up' | 'down' | 'flat';
+  transactionCount: number;
+}
+
+export interface AnomalyItem {
+  type: 'large_single' | 'category_spike' | 'total_spike';
+  description: string;
+  amount: number;
+  categoryId: string | null;
+  date: string;
+}
+
 @Injectable()
 export class AiReportService {
   private readonly logger = new Logger(AiReportService.name);
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly llmProvider: QwenProvider,
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
-   * 生成月度财务洞察报告
-   *
-   * @param familyId 家庭ID
-   * @param year 年份
-   * @param month 月份（1-12）
-   * @returns 生成的月报
+   * 生成月度财务洞察报告（网页月报）
+   * 仅做真实聚合；conclusion（advice）置空，由 QClaw 侧生成。
    */
   async generateMonthlyReport(familyId: string, year: number, month: number) {
     this.logger.log(`开始生成月报: familyId=${familyId}, ${year}-${month}`);
@@ -73,18 +102,10 @@ export class AiReportService {
     // 4. 异常检测
     const anomalies = this.detectAnomalies(transactions, categoryBreakdown, prevExpense);
 
-    // 5. AI生成可执行建议
-    const advice = await this.generateAdvice({
-      totalIncome,
-      totalExpense,
-      balance,
-      prevBalance,
-      prevExpense,
-      categoryBreakdown,
-      anomalies,
-    });
+    // 5. 结论置空（P0-05：结论生成已转移至用户侧 QClaw 本地 LLM）
+    const advice: any[] = [];
 
-    // 6. 保存月报到数据库（upsert：如果已存在则更新）
+    // 6. 保存月报到数据库（upsert）
     const report = await this.prisma.monthlyReport.upsert({
       where: {
         familyId_year_month: { familyId, year, month },
@@ -113,7 +134,7 @@ export class AiReportService {
       },
     });
 
-    // 7. 触发report.ready事件（WebSocket广播）
+    // 7. 触发 report.ready 事件（WebSocket 广播）
     this.eventEmitter.emit('report.ready', {
       reportId: report.id,
       familyId,
@@ -123,85 +144,139 @@ export class AiReportService {
 
     this.logger.log(
       `月报生成完成: reportId=${report.id}, income=${totalIncome}, expense=${totalExpense}, ` +
-      `balance=${balance}, anomalies=${anomalies.length}, advice=${advice.length}`,
+        `balance=${balance}, anomalies=${anomalies.length}`,
     );
 
     return report;
   }
 
-  // ==================== 内部方法 ====================
+  // ==================== 公开聚合方法（供 MCP 工具复用） ====================
 
   /**
-   * 聚合月度交易数据
+   * 任意时间区间的财务汇总（MCP getSummary 核心）。
+   * 通过 ledger.familyId 隔离，保证仅统计该家庭数据。
+   * @returns 结构化 JSON（无 LLM 文案），结论交由 QClaw 本地生成
    */
-  private async aggregateMonthlyData(
+  async aggregateSummary(
     familyId: string,
-    year: number,
-    month: number,
-  ): Promise<{
-    transactions: any[];
-    totalIncome: number;
-    totalExpense: number;
-  }> {
-    // 计算月份起止日期
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 1); // 下个月1日（不包含）
-
-    // 获取该家庭所有账本
+    start: Date,
+    end: Date,
+  ): Promise<SummaryResult> {
     const ledgers = await this.prisma.ledger.findMany({
       where: { familyId },
       select: { id: true },
     });
-
     const ledgerIds = ledgers.map((l) => l.id);
 
     if (ledgerIds.length === 0) {
-      return { transactions: [], totalIncome: 0, totalExpense: 0 };
+      return {
+        totalIncome: 0,
+        totalExpense: 0,
+        balance: 0,
+        categoryBreakdown: [],
+        anomalies: [],
+        period: { start: start.toISOString(), end: end.toISOString() },
+      };
     }
 
-    // 查询当月所有交易
     const transactions = await this.prisma.transaction.findMany({
-      where: {
-        ledgerId: { in: ledgerIds },
-        date: { gte: startDate, lt: endDate },
-      },
-      include: {
-        category: {
-          select: { id: true, name: true, color: true },
-        },
-      },
+      where: { ledgerId: { in: ledgerIds }, date: { gte: start, lt: end } },
+      include: { category: { select: { id: true, name: true, color: true } } },
     });
 
-    // 统计收入和支出
     let totalIncome = 0;
-    let totalExpense = 0;
-
+    let grossExpense = 0;
     for (const tx of transactions) {
       const amount = Number(tx.amount);
-      if (tx.type === 'INCOME') {
-        totalIncome += amount;
-      } else if (tx.type === 'EXPENSE') {
-        totalExpense += amount;
-      }
+      if (tx.type === 'INCOME') totalIncome += amount;
+      else if (tx.type === 'EXPENSE') grossExpense += amount;
     }
 
-    // 月报总支出采用净口径（原额 − 当期退款，§7.2）
-    const refundAmount = await sumRefundAmount(this.prisma, familyId, startDate, endDate);
-    totalExpense = calcNetExpense(totalExpense, refundAmount);
+    // 净支出统一口径（§7.2）
+    const refundAmount = await sumRefundAmount(this.prisma, familyId, start, end);
+    const reimbursedAmount = await sumReimbursedAmount(this.prisma, familyId, start, end);
+    const amortizedAmount = await sumAmortizationAmount(this.prisma, familyId, start, end);
+    const totalExpense = calcNetExpense(
+      grossExpense,
+      refundAmount,
+      reimbursedAmount,
+      amortizedAmount,
+    );
+    const balance = Math.round((totalIncome - totalExpense) * 100) / 100;
 
-    return { transactions, totalIncome, totalExpense };
+    // 分类明细（净口径，扣当期退款）
+    const categoryMap = new Map<string, { name: string; amount: number; count: number }>();
+    for (const tx of transactions) {
+      if (tx.type !== 'EXPENSE') continue;
+      const categoryId = tx.categoryId || 'uncategorized';
+      const categoryName = tx.category?.name || '未分类';
+      if (!categoryMap.has(categoryId)) {
+        categoryMap.set(categoryId, { name: categoryName, amount: 0, count: 0 });
+      }
+      const cat = categoryMap.get(categoryId)!;
+      cat.amount += Number(tx.amount);
+      cat.count += 1;
+    }
+
+    // 当期退款冲减对应分类
+    const refunds = await this.prisma.transaction.findMany({
+      where: {
+        ledger: { familyId },
+        type: 'INCOME',
+        refundOfId: { not: null },
+        date: { gte: start, lt: end },
+      },
+      select: { amount: true, categoryId: true },
+    });
+    for (const r of refunds) {
+      const categoryId = r.categoryId || 'uncategorized';
+      const cat = categoryMap.get(categoryId);
+      if (cat) cat.amount -= Number(r.amount);
+    }
+
+    const totalExpenseForPct = Array.from(categoryMap.values()).reduce(
+      (sum, cat) => sum + cat.amount,
+      0,
+    );
+    const categoryBreakdown: CategoryBreakdownItem[] = Array.from(
+      categoryMap.entries(),
+    )
+      .map(([categoryId, data]) => ({
+        categoryId: categoryId === 'uncategorized' ? null : categoryId,
+        categoryName: data.name,
+        amount: Math.round(data.amount * 100) / 100,
+        percentage:
+          totalExpenseForPct > 0
+            ? Math.round((data.amount / totalExpenseForPct) * 10000) / 100
+            : 0,
+        previousMonthAmount: null,
+        trend: 'flat' as const,
+        transactionCount: data.count,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const anomalies = this.detectAnomalies(transactions, categoryBreakdown, 0);
+
+    return {
+      totalIncome: Math.round(totalIncome * 100) / 100,
+      totalExpense,
+      balance,
+      categoryBreakdown,
+      anomalies,
+      period: { start: start.toISOString(), end: end.toISOString() },
+    };
   }
 
   /**
-   * 获取分类支出明细
+   * 获取分类支出明细（公开，供 P1 getMonthlyStats 复用）
    */
-  private async getCategoryBreakdown(
+  async getCategoryBreakdown(
     familyId: string,
     year: number,
     month: number,
     prevYear: number,
     prevMonth: number,
-  ): Promise<any[]> {
+  ): Promise<CategoryBreakdownItem[]> {
     const { transactions } = await this.aggregateMonthlyData(familyId, year, month);
 
     // 按分类分组统计
@@ -240,7 +315,6 @@ export class AiReportService {
     }
 
     // 净口径：扣除当期退款（按分类）
-    // 通过 ledger.familyId 隔离，保证仅统计该家庭数据（复用 §7.2 同一隔离口径，避免 ledgerIds 作用域问题）
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 1);
     const refunds = await this.prisma.transaction.findMany({
@@ -295,17 +369,18 @@ export class AiReportService {
   }
 
   /**
-   * 异常检测
+   * 异常检测（公开，供 P1 getAnomalies 复用）
    * 1. 大额单笔支出
    * 2. 分类支出异常增长（环比增长超过50%）
-   * 3. 异常频率（某分类交易次数过多）
+   * 3. 总支出环比异常增长
+   * @param prevTotalExpense 上一周期总支出；传 0 时跳过总支出环比检测
    */
-  private detectAnomalies(
+  detectAnomalies(
     transactions: any[],
-    categoryBreakdown: any[],
+    categoryBreakdown: CategoryBreakdownItem[],
     prevTotalExpense: number,
-  ): any[] {
-    const anomalies: any[] = [];
+  ): AnomalyItem[] {
+    const anomalies: AnomalyItem[] = [];
 
     // 1. 大额单笔支出
     for (const tx of transactions) {
@@ -342,7 +417,7 @@ export class AiReportService {
       const totalGrowth = (currentTotal - prevTotalExpense) / prevTotalExpense;
       if (totalGrowth >= ANOMALY_GROWTH_THRESHOLD) {
         anomalies.push({
-          type: 'category_spike',
+          type: 'total_spike',
           description: `总支出环比增长${Math.round(totalGrowth * 100)}%`,
           amount: currentTotal,
           categoryId: null,
@@ -354,119 +429,63 @@ export class AiReportService {
     return anomalies;
   }
 
+  // ==================== 内部方法 ====================
+
   /**
-   * AI生成可执行建议
-   * 调用通义千问，基于当月消费数据生成3条建议
+   * 聚合月度交易数据（私有，供 generateMonthlyReport / getCategoryBreakdown 复用）
    */
-  private async generateAdvice(data: {
+  private async aggregateMonthlyData(
+    familyId: string,
+    year: number,
+    month: number,
+  ): Promise<{
+    transactions: any[];
     totalIncome: number;
     totalExpense: number;
-    balance: number;
-    prevBalance: number;
-    prevExpense: number;
-    categoryBreakdown: any[];
-    anomalies: any[];
-  }): Promise<any[]> {
-    // 构建prompt
-    const topCategories = data.categoryBreakdown.slice(0, 5).map((c) =>
-      `${c.categoryName}: ${c.amount}元 (${c.percentage}%)`,
-    ).join('\n');
+  }> {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 1); // 下个月1日（不包含）
 
-    const anomalyDescriptions = data.anomalies.map((a) => `- ${a.description}`).join('\n');
+    const ledgers = await this.prisma.ledger.findMany({
+      where: { familyId },
+      select: { id: true },
+    });
 
-    const prompt = `作为家庭财务顾问，请根据以下月度财务数据，给出3条具体可执行的理财建议。
+    const ledgerIds = ledgers.map((l) => l.id);
 
-月度财务概览：
-- 总收入：${data.totalIncome}元
-- 总支出：${data.totalExpense}元
-- 结余：${data.balance}元
-- 上月结余：${data.prevBalance}元
-
-支出前5分类：
-${topCategories}
-
-异常情况：
-${anomalyDescriptions || '无异常'}
-
-请严格按照以下JSON数组格式返回，每条建议包含category、title、content三个字段：
-[
-  {"category": "saving", "title": "建议标题", "content": "详细建议内容"},
-  {"category": "budget", "title": "建议标题", "content": "详细建议内容"},
-  {"category": "anomaly", "title": "建议标题", "content": "详细建议内容"}
-]
-
-category可选值: saving（节流建议）、budget（预算建议）、goal（目标建议）、anomaly（异常提醒）
-只返回JSON，不要其他内容。`;
-
-    try {
-      const response = await this.llmProvider.chat(
-        [
-          {
-            role: 'system',
-            content: '你是一位专业的家庭财务顾问，擅长分析家庭收支数据并给出实用的理财建议。你的建议需要具体、可执行、有数据支撑。',
-          },
-          { role: 'user', content: prompt },
-        ],
-        { temperature: 0.7, maxTokens: 800 },
-      );
-
-      // 解析JSON响应
-      const jsonMatch = response.content.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const adviceList = JSON.parse(jsonMatch[0]);
-        return adviceList.map((item: any, index: number) => ({
-          id: `advice_${Date.now()}_${index}`,
-          category: item.category || 'saving',
-          title: item.title || '财务建议',
-          content: item.content || '',
-          actionType: null,
-          actionUrl: null,
-          isHelpful: null,
-        }));
-      }
-    } catch (err) {
-      this.logger.warn(
-        `AI建议生成失败，使用默认建议: ${err instanceof Error ? err.message : String(err)}`,
-      );
+    if (ledgerIds.length === 0) {
+      return { transactions: [], totalIncome: 0, totalExpense: 0 };
     }
 
-    // LLM失败时的默认建议
-    const savingsRate = data.totalIncome > 0
-      ? Math.round((data.balance / data.totalIncome) * 100)
-      : 0;
+    const transactions = await this.prisma.transaction.findMany({
+      where: {
+        ledgerId: { in: ledgerIds },
+        date: { gte: startDate, lt: endDate },
+      },
+      include: {
+        category: {
+          select: { id: true, name: true, color: true },
+        },
+      },
+    });
 
-    return [
-      {
-        id: `advice_default_1`,
-        category: 'saving',
-        title: '储蓄率分析',
-        content: `本月储蓄率为${savingsRate}%，${savingsRate >= 20 ? '保持了良好的储蓄习惯' : '建议提高储蓄率至20%以上'}。结余${data.balance}元可用于应急基金或投资理财。`,
-        actionType: null,
-        actionUrl: null,
-        isHelpful: null,
-      },
-      {
-        id: `advice_default_2`,
-        category: 'budget',
-        title: '支出结构优化',
-        content: data.categoryBreakdown.length > 0
-          ? `最大支出分类为"${data.categoryBreakdown[0].categoryName}"，占比${data.categoryBreakdown[0].percentage}%。建议关注该分类的消费情况，设定合理的预算上限。`
-          : '建议为各支出分类设定月度预算，定期跟踪执行情况。',
-        actionType: 'adjust_budget',
-        actionUrl: '/budget',
-        isHelpful: null,
-      },
-      {
-        id: `advice_default_3`,
-        category: 'anomaly',
-        title: '异常支出提醒',
-        content: data.anomalies.length > 0
-          ? `本月检测到${data.anomalies.length}项异常支出，建议核查：${data.anomalies.slice(0, 2).map((a) => a.description).join('；')}。`
-          : '本月未检测到异常支出，消费情况正常。',
-        actionType: null,
-        actionUrl: null,
-        isHelpful: null,
-      },
-    ];
+    let totalIncome = 0;
+    let totalExpense = 0;
+
+    for (const tx of transactions) {
+      const amount = Number(tx.amount);
+      if (tx.type === 'INCOME') {
+        totalIncome += amount;
+      } else if (tx.type === 'EXPENSE') {
+        totalExpense += amount;
+      }
+    }
+
+    const refundAmount = await sumRefundAmount(this.prisma, familyId, startDate, endDate);
+    const reimbursedAmount = await sumReimbursedAmount(this.prisma, familyId, startDate, endDate);
+    const amortizedAmount = await sumAmortizationAmount(this.prisma, familyId, startDate, endDate);
+    totalExpense = calcNetExpense(totalExpense, refundAmount, reimbursedAmount, amortizedAmount);
+
+    return { transactions, totalIncome, totalExpense };
   }
 }
