@@ -191,3 +191,10 @@ docker compose up -d --build
 | `Dockerfile` | 基于 `node:20-alpine`，装 `docker-cli git openssh-client` |
 | `docker-compose.autodeploy.yml` | 定义独立 `deployer` 服务与挂载（docker.sock / 仓库 / git 凭据） |
 | `README.md` | 本运维文档 |
+
+---
+
+## 附：自动部署闭环验证
+
+- 2026-07-17：通过一次无害提交触发 Gitee Push WebHook，确认 deployer 自动 `git pull` + `docker compose up -d --build` 跑通（验证用提交，无业务改动）。
+
