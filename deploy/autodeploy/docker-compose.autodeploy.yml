@@ -1,0 +1,36 @@
+# 家庭财务 · 自动部署接收器（独立文件，不修改现有 docker-compose.yml）
+#
+# 启动（在仓库根目录执行，用完整相对路径引用本文件）：
+#   cd /opt/family-finance && docker compose -f deploy/autodeploy/docker-compose.autodeploy.yml up -d --build
+# 等价于进入本目录：
+#   cd /opt/family-finance/deploy/autodeploy && docker compose up -d --build
+# 仅新增一个 deployer 服务，不影响现有 frontend / backend / postgres / redis。
+#
+# 注意：WEBHOOK_TOKEN 请通过环境变量或 .env 注入，不要明文写进本文件。
+# 例：WEBHOOK_TOKEN=$(openssl rand -hex 32) docker compose -f deploy/autodeploy/docker-compose.autodeploy.yml up -d --build
+# 或在同目录 .env 中写 WEBHOOK_TOKEN=xxxx
+
+services:
+  deployer:
+    build: .
+    container_name: family_finance_deployer
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:?请在环境变量或 .env 中设置 WEBHOOK_TOKEN}
+      REPO_DIR: /app/repo
+      PORT: 9000
+    volumes:
+      # 让容器内 docker 命令操作宿主机 docker 守护进程
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 宿主机项目目录（git pull + compose build 的目标）
+      - /opt/family-finance:/app/repo
+      # git HTTPS 凭据（容器内以 root 运行，落盘在 /root/.git-credentials）
+      - ~/.git-credentials:/root/.git-credentials:ro
+    networks:
+      - family_finance_net
+
+# 与现有 docker-compose.yml 同名网络保持一致；compose 会自动创建（非 external）。
+networks:
+  family_finance_net: {}
