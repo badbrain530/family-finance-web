@@ -64,23 +64,40 @@ openssl rand -hex 32
 
 ## 四、启动接收器
 
-在**服务器**仓库根目录（`/opt/family-finance`）下，用环境变量注入 token 启动。
-两种等价写法任选其一——关键是 compose 文件路径要正确（文件位于 `deploy/autodeploy/` 内）：
+`WEBHOOK_TOKEN` 是**必填**项。下面三种方式任选其一（推荐方式 1，持久且不易踩坑）。
 
+> ⚠️ **重要路径坑**：用 `docker compose -f deploy/autodeploy/docker-compose.autodeploy.yml` 启动时，
+> Compose 的「项目目录」取的是 **compose 文件所在目录**（`deploy/autodeploy/`），
+> 它自动读取的 `.env` 是 `deploy/autodeploy/.env`，**不是**仓库根的 `/opt/family-finance/.env`。
+> 所以把 token 写进仓库根 `.env` 而**不带 `--env-file`** 是读不到的，会报
+> `required variable WEBHOOK_TOKEN is missing a value`。
+
+**方式 1（推荐，持久化）**：token 写进仓库根 `.env`，启动显式指定 env 文件
 ```bash
-# 写法 A：在仓库根目录，用完整相对路径引用 compose 文件
 cd /opt/family-finance
-WEBHOOK_TOKEN=$(openssl rand -hex 32) \
-  docker compose -f deploy/autodeploy/docker-compose.autodeploy.yml up -d --build
+# 生成强随机 token 并写入根 .env（若已存在则覆盖该行）
+TOKEN=$(openssl rand -hex 32 2>/dev/null || cat /dev/urandom | tr -dc a-f0-9 | head -c 64)
+grep -q '^WEBHOOK_TOKEN=' .env && sed -i "s#^WEBHOOK_TOKEN=.*#WEBHOOK_TOKEN=$TOKEN#" .env || echo "WEBHOOK_TOKEN=$TOKEN" >> .env
 
-# 写法 B：直接进入该目录，省略 -f 参数
-cd /opt/family-finance/deploy/autodeploy
-WEBHOOK_TOKEN=$(openssl rand -hex 32) \
-  docker compose up -d --build
+# 关键：用 --env-file 显式指向根 .env，绕开上面的路径坑
+docker compose --env-file /opt/family-finance/.env -f deploy/autodeploy/docker-compose.autodeploy.yml up -d --build
 ```
 
-也可把 `WEBHOOK_TOKEN=xxxx` 写进同目录的 `.env` 文件（注意不要提交进 git），
-compose 会自动读取。
+**方式 2（行内变量，临时/测试）**：直接在命令前注入环境变量（compose 继承环境变量，能读到）
+```bash
+cd /opt/family-finance
+WEBHOOK_TOKEN=$(openssl rand -hex 32 2>/dev/null || cat /dev/urandom | tr -dc a-f0-9 | head -c 64) \
+  docker compose -f deploy/autodeploy/docker-compose.autodeploy.yml up -d --build
+```
+> 注意：行内变量只管当前 shell，服务器重启后 deployer 重启会再次缺变量；长期使用请改用方式 1。
+
+**方式 3（写到 compose 项目目录的 `.env`）**：
+```bash
+cd /opt/family-finance
+echo "WEBHOOK_TOKEN=$(openssl rand -hex 32 2>/dev/null || cat /dev/urandom | tr -dc a-f0-9 | head -c 64)" >> deploy/autodeploy/.env
+docker compose -f deploy/autodeploy/docker-compose.autodeploy.yml up -d --build
+```
+> 注意：`deploy/autodeploy/.env` 在仓库内，确保 `.gitignore` 忽略它（根 `.env` 同理），勿提交进 git。
 
 说明：
 
